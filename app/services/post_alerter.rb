@@ -568,7 +568,6 @@ class PostAlerter
         Jobs.enqueue(:group_smtp_email,
           group_id: group.id,
           email: email,
-          topic_id: post.topic.id,
           post_id: post.id)
       end
     end
