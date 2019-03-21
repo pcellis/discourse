@@ -20,7 +20,7 @@ class NewPostManager
   end
 
   def self.clear_handlers!
-    @sorted_handlers = [{ priority: 0, proc: method(:default_handler) }]
+    @sorted_handlers = []
   end
 
   def self.add_handler(priority = 0, &block)
@@ -159,13 +159,6 @@ class NewPostManager
       return result
     end
 
-    # We never queue private messages
-    return perform_create_post if @args[:archetype] == Archetype.private_message
-
-    if args[:topic_id] && Topic.where(id: args[:topic_id], archetype: Archetype.private_message).exists?
-      return perform_create_post
-    end
-
     # Perform handlers until one returns a result
     handled = NewPostManager.handlers.any? do |handler|
       result = handler.call(self)
@@ -174,7 +167,12 @@ class NewPostManager
       false
     end
 
-    perform_create_post unless handled
+    # We never queue private messages
+    if @args[:archetype] == Archetype.private_message || (args[:topic_id] && Topic.where(id: args[:topic_id], archetype: Archetype.private_message).exists?)
+      return perform_create_post
+    end
+
+    default_handler || perform_create_post
   end
 
   # Enqueue this post
