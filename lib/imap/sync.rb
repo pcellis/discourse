@@ -35,6 +35,7 @@ module Imap
       # Some emails may be considered newly arrived even though they have been
       # previously processed if the mailbox has been invalidated (UIDVALIDITY
       # changed).
+      start = Time.now # TODO: DELETEME
       if mailbox.last_seen_uid == 0
         old_uids = []
         new_uids = @provider.uids
@@ -42,12 +43,14 @@ module Imap
         old_uids = @provider.uids(to: mailbox.last_seen_uid) # 1 .. seen
         new_uids = @provider.uids(from: mailbox.last_seen_uid + 1) # seen+1 .. inf
       end
+      Rails.logger.warn("Fetched #{old_uids.size + new_uids.size} UIDs in #{Time.now - start}s.") # TODO: DELETEME
 
-      # It takes about ~1s to fetch 1000 old emails (no content) or 100 new
-      # emails (with content).
-      old_uids = old_uids.sample(1000)
-      new_uids = new_uids[0..100]
+      # It takes about ~1s to process 100 old emails (without content)
+      # or 2 new emails (with content).
+      old_uids = old_uids.sample(500) # 5s
+      new_uids = new_uids[0..50] # 25s
 
+      start = Time.now # TODO: DELETEME
       if old_uids.present?
         emails = @provider.emails(mailbox, old_uids, ["UID", "FLAGS", "LABELS"])
         emails.each do |email|
@@ -59,7 +62,9 @@ module Imap
           update_topic(email, incoming_email, mailbox: mailbox)
         end
       end
+      Rails.logger.warn("Processed #{old_uids.size} old emails in #{Time.now - start}s.") # TODO: DELETEME
 
+      start = Time.now # TODO: DELETEME
       if new_uids.present?
         emails = @provider.emails(mailbox, new_uids, ["UID", "FLAGS", "LABELS", "RFC822"])
         emails.each do |email|
@@ -79,17 +84,20 @@ module Imap
           end
         end
       end
+      Rails.logger.warn("Processed #{new_uids.size} new emails in #{Time.now - start}s.") # TODO: DELETEME
 
       mailbox.update!(uid_validity: @status[:uid_validity])
 
       # Discourse-to-server sync:
       #   - sync flags and labels
+      start = Time.now # TODO: DELETEME
       if !SiteSetting.imap_read_only
         @provider.open_mailbox(mailbox, true)
         IncomingEmail.where(imap_sync: true).each do |incoming_email|
           update_email(mailbox, incoming_email)
         end
       end
+      Rails.logger.warn("Synchronized emails in #{Time.now - start}s.") # TODO: DELETEME
     end
 
     def update_topic(email, incoming_email, opts = {})
