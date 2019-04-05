@@ -43,6 +43,11 @@ module Imap
         new_uids = @provider.uids(from: mailbox.last_seen_uid + 1) # seen+1 .. inf
       end
 
+      # It takes about ~1s to fetch 1000 old emails (no content) or 100 new
+      # emails (with content).
+      old_uids = old_uids.sample(1000)
+      new_uids = new_uids[0..100]
+
       if old_uids.present?
         emails = @provider.emails(mailbox, old_uids, ["UID", "FLAGS", "LABELS"])
         emails.each do |email|
