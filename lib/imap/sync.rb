@@ -38,7 +38,7 @@ module Imap
       @status = @provider.open_mailbox(mailbox)
 
       if @status[:uid_validity] != mailbox.uid_validity
-        Rails.logger.warn("UIDVALIDITY does not match, invalidating IMAP cache and resync emails.")
+        Rails.logger.warn("UIDVALIDITY does not match, invalidating IMAP cache and resync emails for #{@group.name}/#{mailbox.name}.")
         mailbox.last_seen_uid = 0
       end
 
@@ -54,19 +54,16 @@ module Imap
         new_uids = @provider.uids(from: mailbox.last_seen_uid + 1) # seen+1 .. inf
       end
 
-      # It takes about ~1s to process 100 old emails (without content)
-      # or 2 new emails (with content).
-      all_new_uids = new_uids
-      old_uids = old_uids.sample(1000)
-      new_uids = new_uids[0..100]
+      import_mode = new_uids.size > SiteSetting.imap_batch_import_email if SiteSetting.imap_batch_import_email > -1
+      old_uids = old_uids.sample(SiteSetting.imap_poll_old_emails) if SiteSetting.imap_poll_old_emails > 0
+      new_uids = new_uids[0..SiteSetting.imap_poll_new_emails] if SiteSetting.imap_poll_new_emails > 0
 
       if old_uids.present?
         emails = @provider.emails(mailbox, old_uids, ["UID", "FLAGS", "LABELS"])
         emails.each do |email|
-          Jobs.enqueue(:process_imap,
-            type: :old,
-            group_id: group.id,
-            mailbox_id: mailbox.id,
+          Jobs.enqueue(:process_imap_email,
+            group_id: @group.id,
+            mailbox_name: mailbox.name,
             uid_validity: @status[:uid_validity],
             email: email,
           )
@@ -76,13 +73,16 @@ module Imap
       if new_uids.present?
         emails = @provider.emails(mailbox, new_uids, ["UID", "FLAGS", "LABELS", "RFC822"])
         emails.each do |email|
-          Jobs.enqueue(:process_imap,
-            type: :new,
-            import_mode: all_new_uids.size > 100,
-            group_id: group.id,
-            mailbox_id: mailbox.id,
+          # Pass content as it is and let `Email::Receiver` handle email
+          # encoding.
+          email["RFC822"] = Base64.encode64(email["RFC822"])
+
+          Jobs.enqueue(:process_imap_email,
+            group_id: @group.id,
+            mailbox_name: mailbox.name,
             uid_validity: @status[:uid_validity],
             email: email,
+            import_mode: import_mode,
           )
         end
       end
@@ -125,7 +125,7 @@ module Imap
 
     def update_topic_tags(email, topic, opts = {})
       tags = []
-      tags << @provider.to_tag(opts[:mailbox].name) if opts[:mailbox]
+      tags << @provider.to_tag(opts[:mailbox_name]) if opts[:mailbox_name]
       email["FLAGS"].each { |flag| tags << @provider.to_tag(flag) }
       email["LABELS"].each { |label| tags << @provider.to_tag(label) }
       tags.reject!(&:blank?)
