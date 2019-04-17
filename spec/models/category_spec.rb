@@ -50,6 +50,26 @@ describe Category do
     end
   end
 
+  describe "#review_group_id" do
+    let(:group) { Fabricate(:group) }
+    let(:category) { Fabricate(:category, reviewable_by_group: group) }
+    let(:topic) { Fabricate(:topic, category: category) }
+    let(:post) { Fabricate(:post, topic: topic) }
+    let(:user) { Fabricate(:user) }
+
+    it "will add the group to the reviewable" do
+      reviewable = PostActionCreator.spam(user, post).reviewable
+      expect(reviewable.reviewable_by_group_id).to eq(group.id)
+    end
+
+    it "will nullify the group_id if destroyed" do
+      reviewable = PostActionCreator.spam(user, post).reviewable
+      group.destroy
+      expect(category.reload.reviewable_by_group).to be_blank
+      expect(reviewable.reload.reviewable_by_group_id).to be_blank
+    end
+  end
+
   describe "topic_create_allowed and post_create_allowed" do
     it "works" do
 

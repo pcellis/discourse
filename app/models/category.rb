@@ -92,6 +92,7 @@ class Category < ActiveRecord::Base
   has_many :tags, through: :category_tags
   has_many :category_tag_groups, dependent: :destroy
   has_many :tag_groups, through: :category_tag_groups
+  belongs_to :reviewable_by_group, class_name: 'Group'
 
   scope :latest, -> { order('topic_count DESC') }
 

@@ -104,7 +104,7 @@
       <label for="topic-auto-close">
         {{i18n 'topic.auto_close.label'}}
       </label>
-            {{text-field value=category.auto_close_hours id="topic-auto-close" type="number"}}
+      {{text-field value=category.auto_close_hours id="topic-auto-close" type="number"}}
       <label>
         {{input type="checkbox" checked=category.auto_close_based_on_last_post}}
         {{i18n 'topic.auto_close.based_on_last_post'}}
@@ -117,7 +117,7 @@
       <label for="category-minimum-tags">
         {{i18n 'category.minimum_required_tags'}}
       </label>
-            {{text-field value=category.minimum_required_tags id="category-minimum-tags" type="number" min="0"}}
+      {{text-field value=category.minimum_required_tags id="category-minimum-tags" type="number" min="0"}}
     </section>
   {{/if}}
 
@@ -125,7 +125,7 @@
     <label for="category-number-daily-bump">
       {{i18n "category.num_auto_bump_daily"}}
     </label>
-        {{text-field value=category.custom_fields.num_auto_bump_daily id="category-number-daily-bump" type="number"}}
+    {{text-field value=category.custom_fields.num_auto_bump_daily id="category-number-daily-bump" type="number"}}
   </section>
 
 </section>
