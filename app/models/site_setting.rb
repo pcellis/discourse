@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'site_setting_extension'
 require_dependency 'global_path'
 require_dependency 'site_settings/yaml_loader'
@@ -75,12 +77,12 @@ class SiteSetting < ActiveRecord::Base
 
   def self.should_download_images?(src)
     setting = disabled_image_download_domains
-    return true unless setting.present?
+    return true if setting.blank?
 
     host = URI.parse(src).host
-    return !(setting.split('|').include?(host))
+    !setting.split("|").include?(host)
   rescue URI::Error
-    return true
+    true
   end
 
   def self.scheme
@@ -97,11 +99,7 @@ class SiteSetting < ActiveRecord::Base
   end
 
   def self.min_redirected_to_top_period(duration)
-    period = ListController.best_period_with_topics_for(duration)
-    return period if period
-
-    # not enough topics
-    nil
+    ListController.best_period_with_topics_for(duration)
   end
 
   def self.queue_jobs=(val)
@@ -119,6 +117,11 @@ class SiteSetting < ActiveRecord::Base
 
   def self.attachment_filename_blacklist_regex
     @attachment_filename_blacklist_regex ||= Regexp.union(SiteSetting.attachment_filename_blacklist.split("|"))
+  end
+
+  def self.unicode_username_character_whitelist_regex
+    @unicode_username_whitelist_regex = SiteSetting.unicode_username_character_whitelist.present? \
+      ? Regexp.new(SiteSetting.unicode_username_character_whitelist) : nil
   end
 
   # helpers for getting s3 settings that fallback to global
@@ -182,6 +185,7 @@ class SiteSetting < ActiveRecord::Base
     digest_logo
     mobile_logo
     large_icon
+    manifest_icon
     favicon
     apple_touch_icon
     twitter_summary_large_image
@@ -189,6 +193,10 @@ class SiteSetting < ActiveRecord::Base
     push_notifications_icon
   }.each do |setting_name|
     define_singleton_method("site_#{setting_name}_url") do
+      if SiteIconManager.respond_to?("#{setting_name}_url")
+        return SiteIconManager.public_send("#{setting_name}_url")
+      end
+
       upload = self.public_send(setting_name)
       upload ? full_cdn_url(upload.url) : ''
     end

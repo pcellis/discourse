@@ -1,3 +1,4 @@
+# coding: utf-8
 # frozen_string_literal: true
 require 'current_user'
 require 'canonical_url'
@@ -62,7 +63,8 @@ module ApplicationHelper
 
     if GlobalSetting.use_s3? && GlobalSetting.s3_cdn_url
       if GlobalSetting.cdn_url
-        path = path.gsub(GlobalSetting.cdn_url, GlobalSetting.s3_cdn_url)
+        folder = ActionController::Base.config.relative_url_root || "/"
+        path = path.gsub(File.join(GlobalSetting.cdn_url, folder, "/"), File.join(GlobalSetting.s3_cdn_url, "/"))
       else
         # we must remove the subfolder path here, assets are uploaded to s3
         # without it getting involved
@@ -111,6 +113,7 @@ module ApplicationHelper
     list = []
     list << (mobile_view? ? 'mobile-view' : 'desktop-view')
     list << (mobile_device? ? 'mobile-device' : 'not-mobile-device')
+    list << 'ios-device' if ios_device?
     list << 'rtl' if rtl?
     list << text_size_class
     list << 'anon' unless current_user
@@ -220,11 +223,7 @@ module ApplicationHelper
         opts[:twitter_summary_large_image] = twitter_summary_large_image_url
       end
 
-      opts[:image] = SiteSetting.site_opengraph_image_url.presence ||
-        twitter_summary_large_image_url.presence ||
-        SiteSetting.site_large_icon_url.presence ||
-        SiteSetting.site_apple_touch_icon_url.presence ||
-        SiteSetting.site_logo_url.presence
+      opts[:image] = SiteSetting.site_opengraph_image_url
     end
 
     # Use the correct scheme for opengraph/twitter image
@@ -293,7 +292,7 @@ module ApplicationHelper
 
   def application_logo_url
     @application_logo_url ||= begin
-      if mobile_view? && SiteSetting.site_mobile_logo_url
+      if mobile_view? && SiteSetting.site_mobile_logo_url.present?
         SiteSetting.site_mobile_logo_url
       else
         SiteSetting.site_logo_url
@@ -319,6 +318,10 @@ module ApplicationHelper
 
   def mobile_device?
     MobileDetection.mobile_device?(request.user_agent)
+  end
+
+  def ios_device?
+    MobileDetection.ios_device?(request.user_agent)
   end
 
   def customization_disabled?
@@ -430,6 +433,11 @@ module ApplicationHelper
       &.html_safe
   end
 
+  def theme_js_lookup
+    Theme.lookup_field(theme_ids, :extra_js, nil)
+      &.html_safe
+  end
+
   def discourse_stylesheet_link_tag(name, opts = {})
     if opts.key?(:theme_ids)
       ids = opts[:theme_ids] unless customization_disabled?
@@ -447,11 +455,10 @@ module ApplicationHelper
 
   def client_side_setup_data
     service_worker_url = Rails.env.development? ? 'service-worker.js' : Rails.application.assets_manifest.assets['service-worker.js']
-    current_hostname_without_port = RailsMultisite::ConnectionManagement.current_hostname.sub(/:[\d]*$/, '')
 
     setup_data = {
       cdn: Rails.configuration.action_controller.asset_host,
-      base_url: current_hostname_without_port,
+      base_url: Discourse.base_url,
       base_uri: Discourse::base_uri,
       environment: Rails.env,
       letter_avatar_version: LetterAvatar.version,

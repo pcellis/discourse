@@ -1,9 +1,11 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 describe Jobs::ExportCsvFile do
 
-  context '.execute' do
-    let(:user) { Fabricate(:user, username: "john_doe") }
+  context '#execute' do
+    fab!(:user) { Fabricate(:user, username: "john_doe") }
 
     it 'raises an error when the entity is missing' do
       expect { Jobs::ExportCsvFile.new.execute(user_id: user.id) }.to raise_error(Discourse::InvalidParameters)
@@ -11,14 +13,29 @@ describe Jobs::ExportCsvFile do
 
     it 'works' do
       begin
-        Jobs::ExportCsvFile.new.execute(user_id: user.id, entity: "user_archive")
+        expect do
+          Jobs::ExportCsvFile.new.execute(
+            user_id: user.id,
+            entity: "user_archive"
+          )
+        end.to change { Upload.count }.by(1)
 
-        expect(user.topics_allowed.last.title).to eq(I18n.t(
+        system_message = user.topics_allowed.last
+
+        expect(system_message.title).to eq(I18n.t(
           "system_messages.csv_export_succeeded.subject_template",
           export_title: "User Archive"
         ))
 
-        expect(user.topics_allowed.last.first_post.raw).to include("user-archive-john_doe-")
+        upload = system_message.first_post.uploads.first
+
+        expect(system_message.first_post.raw).to eq(I18n.t(
+          "system_messages.csv_export_succeeded.text_body_template",
+          download_link: "[#{upload.original_filename}|attachment](#{upload.short_url}) (#{upload.filesize} Bytes)"
+        ).chomp)
+
+        expect(system_message.id).to eq(UserExport.last.topic_id)
+        expect(system_message.closed).to eq(true)
       ensure
         user.uploads.each(&:destroy!)
       end

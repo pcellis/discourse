@@ -1,6 +1,5 @@
 import LoadMore from "discourse/mixins/load-more";
 import ClickTrack from "discourse/lib/click-track";
-import { selectedText } from "discourse/lib/utilities";
 import Post from "discourse/models/post";
 import DiscourseURL from "discourse/lib/url";
 import Draft from "discourse/models/draft";
@@ -32,23 +31,7 @@ export default Ember.Component.extend(LoadMore, {
     $(window).on("resize.discourse-on-scroll", () => this.scrolled());
 
     this.$().on("click.details-disabled", "details.disabled", () => false);
-    this.$().on("mouseup.discourse-redirect", ".excerpt a", function(e) {
-      // bypass if we are selecting stuff
-      const selection = window.getSelection && window.getSelection();
-      if (selection.type === "Range" || selection.rangeCount > 0) {
-        if (selectedText() !== "") {
-          return true;
-        }
-      }
-
-      const $target = $(e.target);
-      if (
-        $target.hasClass("mention") ||
-        $target.parents(".expanded-embed").length
-      ) {
-        return false;
-      }
-
+    this.$().on("click.discourse-redirect", ".excerpt a", function(e) {
       return ClickTrack.trackClick(e);
     });
   }.on("didInsertElement"),
@@ -60,12 +43,12 @@ export default Ember.Component.extend(LoadMore, {
     this.$().off("click.details-disabled", "details.disabled");
 
     // Unbind link tracking
-    this.$().off("mouseup.discourse-redirect", ".excerpt a");
+    this.$().off("click.discourse-redirect", ".excerpt a");
   }.on("willDestroyElement"),
 
   actions: {
     removeBookmark(userAction) {
-      const stream = this.get("stream");
+      const stream = this.stream;
       Post.updateBookmark(userAction.get("post_id"), false)
         .then(() => {
           stream.remove(userAction);
@@ -98,7 +81,7 @@ export default Ember.Component.extend(LoadMore, {
     },
 
     removeDraft(draft) {
-      const stream = this.get("stream");
+      const stream = this.stream;
       Draft.clear(draft.draft_key, draft.sequence)
         .then(() => {
           stream.remove(draft);
@@ -109,15 +92,15 @@ export default Ember.Component.extend(LoadMore, {
     },
 
     loadMore() {
-      if (this.get("loading")) {
+      if (this.loading) {
         return;
       }
 
       this.set("loading", true);
-      const stream = this.get("stream");
+      const stream = this.stream;
       stream.findItems().then(() => {
         this.set("loading", false);
-        this.get("eyeline").flushRest();
+        this.eyeline.flushRest();
       });
     }
   }

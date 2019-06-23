@@ -1,3 +1,4 @@
+import selectKit from "helpers/select-kit-helper";
 import { acceptance } from "helpers/qunit-helpers";
 import { IMAGE_VERSION as v } from "pretty-text/emoji/version";
 
@@ -5,18 +6,6 @@ acceptance("Topic", {
   loggedIn: true,
   pretend(server, helper) {
     server.put("/posts/398/wiki", () => {
-      return helper.response({});
-    });
-
-    server.get("/topics/feature_stats.json", () => {
-      return helper.response({
-        pinned_in_category_count: 0,
-        pinned_globally_count: 0,
-        banner_count: 0
-      });
-    });
-
-    server.put("/t/280/make-banner", () => {
       return helper.response({});
     });
   }

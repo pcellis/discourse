@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "digest"
 require_dependency "new_post_manager"
 require_dependency "html_to_markdown"
@@ -25,6 +27,7 @@ module Email
     class SilencedUserError            < ProcessingError; end
     class BadDestinationAddress        < ProcessingError; end
     class StrangersNotAllowedError     < ProcessingError; end
+    class ReplyNotAllowedError         < ProcessingError; end
     class InsufficientTrustLevelError  < ProcessingError; end
     class ReplyUserNotMatchingError    < ProcessingError; end
     class TopicNotFoundError           < ProcessingError; end
@@ -345,7 +348,7 @@ module Email
         # use the first html extracter that matches
         if html_extracter = HTML_EXTRACTERS.select { |_, r| html[r] }.min_by { |_, r| html =~ r }
           doc = Nokogiri::HTML.fragment(html)
-          self.send(:"extract_from_#{html_extracter[0]}", doc)
+          self.public_send(:"extract_from_#{html_extracter[0]}", doc)
         else
           markdown = HtmlToMarkdown.new(html, keep_img_tags: true, keep_cid_imgs: true).to_markdown
           markdown = trim_discourse_markers(markdown)
@@ -513,13 +516,13 @@ module Email
     def parse_from_field(mail = nil)
       mail ||= @mail
 
-      if mail.bounced?
+      if email_log.present?
+        email = email_log.to_address || email_log.user&.email
+        return [email, email_log.user&.username]
+      elsif mail.bounced?
         Array.wrap(mail.final_recipient).each do |from|
           return extract_from_address_and_name(from)
         end
-      elsif email_log.present?
-        email = email_log.user&.email || email_log.to_address
-        return [email, email_log.user&.username]
       end
 
       return unless mail[:from]
@@ -692,12 +695,12 @@ module Email
         raise BadDestinationAddress if user.blank?
 
         post_reply_key = destination[:obj]
+        post = Post.with_deleted.find(post_reply_key.post_id)
+        raise ReplyNotAllowedError if !Guardian.new(user).can_create_post?(post&.topic)
 
         if post_reply_key.user_id != user.id && !forwarded_reply_key?(post_reply_key, user)
           raise ReplyUserNotMatchingError, "post_reply_key.user_id => #{post_reply_key.user_id.inspect}, user.id => #{user.id.inspect}"
         end
-
-        post = Post.with_deleted.find(post_reply_key.post_id)
 
         create_reply(user: user,
                      raw: body,
@@ -802,13 +805,13 @@ module Email
 
       return false if email.blank? || !email["@"]
 
-      embedded_user = find_or_create_user(email, display_name)
       raw = try_to_encode(embedded.decoded, "UTF-8").presence || embedded.to_s
       title = embedded.subject.presence || subject
 
       case destination[:type]
       when :group
         group = destination[:obj]
+        embedded_user = find_or_create_user(email, display_name)
         post = create_topic(user: embedded_user,
                             raw: raw,
                             title: title,
@@ -825,6 +828,7 @@ module Email
         return false if user.staged? && !category.email_in_allow_strangers
         return false if !user.has_trust_level?(SiteSetting.email_in_min_trust)
 
+        embedded_user = find_or_create_user(email, display_name)
         post = create_topic(user: embedded_user,
                             raw: raw,
                             title: title,
@@ -1011,6 +1015,8 @@ module Email
     end
 
     def add_attachments(raw, user, options = {})
+      raw = raw.dup
+
       rejected_attachments = []
       attachments.each do |attachment|
         tmp = Tempfile.new(["discourse-email-attachment", File.extname(attachment.filename)])
@@ -1025,6 +1031,15 @@ module Email
             if attachment.content_type&.start_with?("image/")
               if raw[attachment.url]
                 raw.sub!(attachment.url, upload.url)
+
+                InlineUploads.match_img(raw) do |match, src, replacement, _|
+                  if src == upload.url
+                    raw = raw.sub(
+                      match,
+                      "![#{upload.original_filename}|#{upload.width}x#{upload.height}](#{upload.short_url})"
+                    )
+                  end
+                end
               elsif raw[/\[image:.*?\d+[^\]]*\]/i]
                 raw.sub!(/\[image:.*?\d+[^\]]*\]/i, attachment_markdown(upload))
               else
@@ -1068,9 +1083,9 @@ module Email
 
     def attachment_markdown(upload)
       if FileHelper.is_supported_image?(upload.original_filename)
-        "<img src='#{upload.url}' width='#{upload.width}' height='#{upload.height}'>"
+        "![#{upload.original_filename}|#{upload.width}x#{upload.height}](#{upload.short_url})"
       else
-        "<a class='attachment' href='#{upload.url}'>#{upload.original_filename}</a> (#{number_to_human_size(upload.filesize)})"
+        "[#{upload.original_filename}|attachment](#{upload.short_url}) (#{number_to_human_size(upload.filesize)})"
       end
     end
 
@@ -1112,7 +1127,9 @@ module Email
         raise TooShortPost
       end
 
-      raise InvalidPost, errors.join("\n") if result.errors.any?
+      if result.errors.present?
+        raise InvalidPost, errors.join("\n")
+      end
 
       if result.post
         @incoming_email.update_columns(topic_id: result.post.topic_id, post_id: result.post.id)
@@ -1125,7 +1142,7 @@ module Email
     end
 
     def self.elided_html(elided)
-      html =  "\n\n" << "<details class='elided'>" << "\n"
+      html =  +"\n\n" << "<details class='elided'>" << "\n"
       html << "<summary title='#{I18n.t('emails.incoming.show_trimmed_content')}'>&#183;&#183;&#183;</summary>" << "\n\n"
       html << elided << "\n\n"
       html << "</details>" << "\n"
@@ -1174,7 +1191,7 @@ module Email
     end
 
     def send_subscription_mail(action, user)
-      message = SubscriptionMailer.send(action, user)
+      message = SubscriptionMailer.public_send(action, user)
       Email::Sender.new(message, :subscription).send
     end
 

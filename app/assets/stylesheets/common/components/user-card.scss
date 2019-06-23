@@ -2,6 +2,33 @@ $card_width: 580px;
 $avatar_width: 120px;
 $avatar_margin: -50px; // negative margin makes avatars extend above cards
 
+.animated-placeholder {
+  height: 20px;
+  position: relative;
+}
+
+.card-avatar-placeholder {
+  width: $avatar_width;
+  height: $avatar_width;
+  border-radius: 100%;
+  position: relative;
+  overflow: hidden;
+  &:before {
+    animation: placeHolderShimmer 4s linear infinite forwards;
+    position: absolute;
+    left: 0;
+    content: "";
+    background: linear-gradient(
+      to right,
+      $primary-very-low 10%,
+      $primary-low 18%,
+      $primary-very-low 33%
+    );
+    height: $avatar_width;
+    width: $card_width;
+  }
+}
+
 // shared styles for user and group cards
 #user-card,
 #group-card {

@@ -1,3 +1,6 @@
+# coding: utf-8
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 describe ApplicationHelper do
@@ -28,6 +31,13 @@ describe ApplicationHelper do
       it "deals correctly with subfolder" do
         ActionController::Base.config.relative_url_root = "/community"
         expect(helper.preload_script("application")).to include('https://s3cdn.com/assets/application.js')
+      end
+
+      it "replaces cdn URLs with s3 cdn subfolder paths" do
+        global_setting :s3_cdn_url, 'https://s3cdn.com/s3_subpath'
+        set_cdn_url "https://awesome.com"
+        ActionController::Base.config.relative_url_root = "/community"
+        expect(helper.preload_script("application")).to include('https://s3cdn.com/s3_subpath/assets/application.js')
       end
 
       it "returns magic brotli mangling for brotli requests" do
@@ -164,7 +174,7 @@ describe ApplicationHelper do
   end
 
   describe '#html_classes' do
-    let(:user) { Fabricate(:user) }
+    fab!(:user) { Fabricate(:user) }
 
     it "includes 'rtl' when the I18n.locale is rtl" do
       I18n.stubs(:locale).returns(:he)
@@ -288,20 +298,14 @@ describe ApplicationHelper do
         )
 
         SiteSetting.large_icon = nil
-
-        expect(helper.crawlable_meta_data).to include(
-          SiteSetting.site_apple_touch_icon_url
-        )
-
-        SiteSetting.apple_touch_icon = nil
-        SiteSetting.apple_touch_icon_url = nil
+        SiteSetting.logo_small = nil
 
         expect(helper.crawlable_meta_data).to include(SiteSetting.site_logo_url)
 
         SiteSetting.logo = nil
         SiteSetting.logo_url = nil
 
-        expect(helper.crawlable_meta_data).to_not include("/images")
+        expect(helper.crawlable_meta_data).to include(Upload.find(SiteIconManager::SKETCH_LOGO_ID).url)
       end
     end
   end

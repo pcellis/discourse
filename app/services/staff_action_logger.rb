@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_dependency 'staff_message_format'
 
 # Responsible for logging the actions of admins and moderators.
@@ -16,7 +18,11 @@ class StaffActionLogger
 
   def log_user_deletion(deleted_user, opts = {})
     raise Discourse::InvalidParameters.new(:deleted_user) unless deleted_user && deleted_user.is_a?(User)
-    details = USER_FIELDS.map { |x| "#{x}: #{deleted_user.send(x)}" }.join("\n")
+
+    details = USER_FIELDS.map do |x|
+      "#{x}: #{deleted_user.public_send(x)}"
+    end.join("\n")
+
     UserHistory.create!(params(opts).merge(
       action: UserHistory.actions[:delete_user],
       ip_address: deleted_user.ip_address.to_s,
@@ -200,6 +206,18 @@ class StaffActionLogger
     ))
   end
 
+  def log_theme_setting_change(setting_name, previous_value, new_value, theme, opts = {})
+    raise Discourse::InvalidParameters.new(:theme) unless theme
+    raise Discourse::InvalidParameters.new(:setting_name) unless theme.included_settings.has_key?(setting_name)
+
+    UserHistory.create!(params(opts).merge(
+      action: UserHistory.actions[:change_theme_setting],
+      subject: "#{theme.name}: #{setting_name.to_s}",
+      previous_value: previous_value,
+      new_value: new_value
+    ))
+  end
+
   def log_site_text_change(subject, new_text = nil, old_text = nil, opts = {})
     raise Discourse::InvalidParameters.new(:subject) unless subject.present?
     UserHistory.create!(params(opts).merge(
@@ -268,7 +286,11 @@ class StaffActionLogger
 
   def log_badge_creation(badge)
     raise Discourse::InvalidParameters.new(:badge) unless badge
-    details = BADGE_FIELDS.map { |f| [f, badge.send(f)] }.select { |f, v| v.present? }.map { |f, v| "#{f}: #{v}" }
+
+    details = BADGE_FIELDS.map do |f|
+      [f, badge.public_send(f)]
+    end.select { |f, v| v.present? }.map { |f, v| "#{f}: #{v}" }
+
     UserHistory.create!(params.merge(
       action: UserHistory.actions[:create_badge],
       details: details.join("\n")
@@ -287,7 +309,11 @@ class StaffActionLogger
 
   def log_badge_deletion(badge)
     raise Discourse::InvalidParameters.new(:badge) unless badge
-    details = BADGE_FIELDS.map { |f| [f, badge.send(f)] }.select { |f, v| v.present? }.map { |f, v| "#{f}: #{v}" }
+
+    details = BADGE_FIELDS.map do |f|
+      [f, badge.public_send(f)]
+    end.select { |f, v| v.present? }.map { |f, v| "#{f}: #{v}" }
+
     UserHistory.create!(params.merge(
       action: UserHistory.actions[:delete_badge],
       details: details.join("\n")

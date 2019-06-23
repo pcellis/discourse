@@ -1,42 +1,31 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 describe Jobs::BulkInvite do
   describe '#execute' do
-    let(:user) { Fabricate(:user) }
-    let(:admin) { Fabricate(:admin) }
-    let!(:group1) { Fabricate(:group, name: 'group1') }
-    let!(:group2) { Fabricate(:group, name: 'group2') }
-    let!(:topic) { Fabricate(:topic, id: 999) }
+    fab!(:user) { Fabricate(:user) }
+    fab!(:admin) { Fabricate(:admin) }
+    fab!(:group1) { Fabricate(:group, name: 'group1') }
+    fab!(:group2) { Fabricate(:group, name: 'group2') }
+    fab!(:topic) { Fabricate(:topic, id: 999) }
     let(:email) { "test@discourse.org" }
-    let(:csv_info) { [] }
-    let(:basename) { "bulk_invite.csv" }
-    let(:filename) { "#{Invite.base_directory}/#{basename}" }
+    let(:invites) { [{ email: 'test2@discourse.org' }, { email: 'test@discourse.org', groups: 'GROUP1;group2', topic_id: 999 }] }
 
-    before do
-      Invite.create_csv(
-        fixture_file_upload("#{Rails.root}/spec/fixtures/csv/#{basename}"),
-        "bulk_invite"
-      )
-    end
-
-    it 'raises an error when the filename is missing' do
-      user = Fabricate(:user)
-
+    it 'raises an error when the invites array is missing' do
       expect { Jobs::BulkInvite.new.execute(current_user_id: user.id) }
-        .to raise_error(Discourse::InvalidParameters, /filename/)
+        .to raise_error(Discourse::InvalidParameters, /invites/)
     end
 
     it 'raises an error when current_user_id is not valid' do
-      user = Fabricate(:user)
-
-      expect { Jobs::BulkInvite.new.execute(filename: filename) }
+      expect { Jobs::BulkInvite.new.execute(invites: invites) }
         .to raise_error(Discourse::InvalidParameters, /current_user_id/)
     end
 
     it 'creates the right invites' do
       described_class.new.execute(
-        current_user_id: Fabricate(:admin).id,
-        filename: basename,
+        current_user_id: admin.id,
+        invites: invites
       )
 
       invite = Invite.last
@@ -55,8 +44,8 @@ describe Jobs::BulkInvite do
       group2.update!(automatic: true)
 
       described_class.new.execute(
-        current_user_id: Fabricate(:admin).id,
-        filename: basename,
+        current_user_id: admin.id,
+        invites: invites
       )
 
       invite = Invite.last
@@ -73,7 +62,7 @@ describe Jobs::BulkInvite do
 
       described_class.new.execute(
         current_user_id: user.id,
-        filename: basename
+        invites: invites
       )
 
       invite = Invite.last
@@ -93,7 +82,7 @@ describe Jobs::BulkInvite do
       expect do
         described_class.new.execute(
           current_user_id: admin.id,
-          filename: basename
+          invites: invites
         )
       end.to change { Invite.count }.by(1)
 

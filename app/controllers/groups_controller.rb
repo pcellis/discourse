@@ -1,4 +1,8 @@
+# frozen_string_literal: true
+
 class GroupsController < ApplicationController
+  include ApplicationHelper
+
   requires_login only: [
     :set_notifications,
     :mentionable,
@@ -42,7 +46,7 @@ class GroupsController < ApplicationController
       raise Discourse::InvalidAccess.new(:enable_group_directory)
     end
 
-    page_size = 30
+    page_size = mobile_device? ? 15 : 36
     page = params[:page]&.to_i || 0
     order = %w{name user_count}.delete(params[:order])
     dir = params[:asc] ? 'ASC' : 'DESC'
@@ -207,6 +211,10 @@ class GroupsController < ApplicationController
       raise Discourse::InvalidParameters.new(:limit)
     end
 
+    if limit > 1000
+      raise Discourse::InvalidParameters.new(:limit)
+    end
+
     if offset < 0
       raise Discourse::InvalidParameters.new(:offset)
     end
@@ -317,8 +325,14 @@ class GroupsController < ApplicationController
       ))
     else
       users.each do |user|
-        group.add(user)
-        GroupActionLogger.new(current_user, group).log_add_user_to_group(user)
+        begin
+          group.add(user)
+          GroupActionLogger.new(current_user, group).log_add_user_to_group(user)
+        rescue ActiveRecord::RecordNotUnique
+          # Under concurrency, we might attempt to insert two records quickly and hit a DB
+          # constraint. In this case we can safely ignore the error and act as if the user
+          # was added to the group.
+        end
       end
 
       render json: success_json.merge!(
@@ -408,12 +422,13 @@ class GroupsController < ApplicationController
   def request_membership
     params.require(:reason)
 
-    unless current_user.staff?
-      RateLimiter.new(current_user, "request_group_membership", 1, 1.day).performed!
-    end
-
     group = find_group(:id)
-    group_name = group.name
+
+    begin
+      GroupRequest.create!(group: group, user: current_user, reason: params[:reason])
+    rescue ActiveRecord::RecordNotUnique => e
+      return render json: failed_json.merge(error: I18n.t("groups.errors.already_requested_membership")), status: 409
+    end
 
     usernames = [current_user.username].concat(
       group.users.where('group_users.owner')
@@ -432,14 +447,12 @@ class GroupsController < ApplicationController
     EOF
 
     post = PostCreator.new(current_user,
-      title: I18n.t('groups.request_membership_pm.title', group_name: group_name),
+      title: I18n.t('groups.request_membership_pm.title', group_name: group.name),
       raw: raw,
       archetype: Archetype.private_message,
       target_usernames: usernames.join(','),
       skip_validations: true
     ).create!
-
-    GroupRequest.create!(group: group, user: current_user, reason: params[:reason])
 
     render json: success_json.merge(relative_url: post.topic.relative_url)
   end
@@ -536,6 +549,9 @@ class GroupsController < ApplicationController
             :automatic_membership_email_domains,
             :automatic_membership_retroactive
           ])
+
+          custom_fields = Group.editable_group_custom_fields
+          default_params << { custom_fields: custom_fields } unless custom_fields.blank?
         end
 
         default_params

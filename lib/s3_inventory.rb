@@ -5,7 +5,7 @@ require "csv"
 
 class S3Inventory
 
-  attr_reader :inventory_id, :model, :inventory_date
+  attr_reader :type, :model, :inventory_date
 
   CSV_KEY_INDEX ||= 1
   CSV_ETAG_INDEX ||= 2
@@ -16,10 +16,10 @@ class S3Inventory
     @s3_helper = s3_helper
 
     if type == :upload
-      @inventory_id = "original"
+      @type = "original"
       @model = Upload
     elsif type == :optimized
-      @inventory_id = "optimized"
+      @type = "optimized"
       @model = OptimizedImage
     end
   end
@@ -30,19 +30,21 @@ class S3Inventory
       return
     end
 
-    DistributedMutex.synchronize("s3_inventory_list_missing_#{inventory_id}") do
+    DistributedMutex.synchronize("s3_inventory_list_missing_#{type}") do
       download_inventory_files_to_tmp_directory
       decompress_inventory_files
 
+      multisite_prefix = "uploads/#{RailsMultisite::ConnectionManagement.current_db}/"
       ActiveRecord::Base.transaction do
         begin
-          table_name = "#{inventory_id}_inventory"
-          connection = ActiveRecord::Base.connection.raw_connection
-          connection.exec("CREATE TEMP TABLE #{table_name}(key text UNIQUE, etag text, PRIMARY KEY(etag, key))")
+          connection.exec("CREATE TEMP TABLE #{table_name}(url text UNIQUE, etag text, PRIMARY KEY(etag, url))")
           connection.copy_data("COPY #{table_name} FROM STDIN CSV") do
             files.each do |file|
               CSV.foreach(file[:filename][0...-3], headers: false) do |row|
-                connection.put_copy_data("#{row[CSV_KEY_INDEX]},#{row[CSV_ETAG_INDEX]}\n")
+                key = row[CSV_KEY_INDEX]
+                next if Rails.configuration.multisite && key.exclude?(multisite_prefix)
+                url = File.join(Discourse.store.absolute_base_url, key)
+                connection.put_copy_data("#{url},#{row[CSV_ETAG_INDEX]}\n")
               end
             end
           end
@@ -52,10 +54,14 @@ class S3Inventory
             SET etag = #{table_name}.etag
             FROM #{table_name}
             WHERE #{model.table_name}.etag IS NULL
-              AND url ILIKE '%' || #{table_name}.key")
+              AND #{model.table_name}.url = #{table_name}.url")
+
+          list_missing_post_uploads if type == "original"
 
           uploads = (model == Upload) ? model.by_users.where("created_at < ?", inventory_date) : model
-          missing_uploads = uploads.joins("LEFT JOIN #{table_name} ON #{table_name}.etag = #{model.table_name}.etag").where("#{table_name}.etag is NULL")
+          missing_uploads = uploads
+            .joins("LEFT JOIN #{table_name} ON #{table_name}.etag = #{model.table_name}.etag")
+            .where("#{table_name}.etag IS NULL AND #{model.table_name}.etag IS NOT NULL")
 
           if (missing_count = missing_uploads.count) > 0
             missing_uploads.select(:id, :url).find_each do |upload|
@@ -73,6 +79,44 @@ class S3Inventory
     end
   end
 
+  def list_missing_post_uploads
+    log "Listing missing post uploads..."
+
+    missing = Post.find_missing_uploads(include_local_upload: false) do |_, _, _, sha1|
+      next if sha1.blank?
+
+      upload_id = nil
+      result = connection.exec("SELECT * FROM #{table_name} WHERE url LIKE '%original/%/#{sha1}%'")
+
+      if result.count >= 1
+        begin
+          url = result[0]["url"]
+          key = url.sub(/^#{Discourse.store.absolute_base_url}\//, "")
+          data = @s3_helper.object(key).data
+          filename = (data.content_disposition&.match(/filename=\"(.*)\"/) || [])[1]
+
+          upload = Upload.new(
+            user_id: Discourse.system_user.id,
+            original_filename: filename || File.basename(key),
+            filesize: data.content_length,
+            url: url,
+            sha1: sha1,
+            etag: result[0]["etag"]
+          )
+          upload.save!(validate: false)
+          upload_id = upload.id
+        rescue Aws::S3::Errors::NotFound
+          next
+        end
+      end
+
+      upload_id
+    end
+
+    Discourse.stats.set("missing_post_uploads", missing[:count])
+    log "#{missing[:count]} post uploads are missing."
+  end
+
   def download_inventory_files_to_tmp_directory
     files.each do |file|
       log "Downloading inventory file '#{file[:key]}' to tmp directory..."
@@ -83,11 +127,9 @@ class S3Inventory
   end
 
   def decompress_inventory_files
-    FileUtils.cd(tmp_directory) do
-      files.each do |file|
-        log "Decompressing inventory file '#{file[:filename]}', this may take a while..."
-        Discourse::Utils.execute_command('gzip', '--decompress', file[:filename], failure_message: "Failed to decompress inventory file '#{file[:filename]}'.")
-      end
+    files.each do |file|
+      log "Decompressing inventory file '#{file[:filename]}', this may take a while..."
+      Discourse::Utils.execute_command('gzip', '--decompress', file[:filename], failure_message: "Failed to decompress inventory file '#{file[:filename]}'.", chdir: tmp_directory)
     end
   end
 
@@ -128,6 +170,14 @@ class S3Inventory
 
   private
 
+  def connection
+    @connection ||= ActiveRecord::Base.connection.raw_connection
+  end
+
+  def table_name
+    "#{type}_inventory"
+  end
+
   def files
     @files ||= begin
       symlink_file = unsorted_files.sort_by { |file| -file.last_modified.to_i }.first
@@ -157,7 +207,7 @@ class S3Inventory
   end
 
   def inventory_configuration
-    filter_prefix = inventory_id
+    filter_prefix = type
     filter_prefix = File.join(bucket_folder_path, filter_prefix) if bucket_folder_path.present?
 
     {
@@ -202,6 +252,16 @@ class S3Inventory
     objects
   rescue Aws::Errors::ServiceError => e
     log("Failed to list inventory from S3", e)
+  end
+
+  def inventory_id
+    @inventory_id ||= begin
+      if bucket_folder_path.present?
+        "#{bucket_folder_path}-#{type}"
+      else
+        type
+      end
+    end
   end
 
   def inventory_path_arn

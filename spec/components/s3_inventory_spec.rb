@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 require "s3_helper"
 require "s3_inventory"
@@ -6,7 +8,6 @@ require "file_store/s3_store"
 describe "S3Inventory" do
   let(:client) { Aws::S3::Client.new(stub_responses: true) }
   let(:helper) { S3Helper.new(SiteSetting.Upload.s3_upload_bucket.downcase, "", client: client) }
-  let(:store) { FileStore::S3Store.new(helper) }
   let(:inventory) { S3Inventory.new(helper, :upload) }
   let(:csv_filename) { "#{Rails.root}/spec/fixtures/csv/s3_inventory.csv" }
 
@@ -64,6 +65,7 @@ describe "S3Inventory" do
 
     upload = Fabricate(:upload, etag: "ETag", created_at: 1.days.ago)
     Fabricate(:upload, etag: "ETag2", created_at: Time.now)
+    Fabricate(:upload, created_at: 2.days.ago)
 
     inventory.expects(:download_inventory_files_to_tmp_directory)
     inventory.expects(:decompress_inventory_files)
@@ -74,14 +76,14 @@ describe "S3Inventory" do
       inventory.backfill_etags_and_list_missing
     end
 
-    expect(output).to eq("#{upload.url}\n1 of 4 uploads are missing\n")
+    expect(output).to eq("Listing missing post uploads...\n0 post uploads are missing.\n#{upload.url}\n1 of 5 uploads are missing\n")
     expect(Discourse.stats.get("missing_s3_uploads")).to eq(1)
   end
 
   it "should backfill etags to uploads table correctly" do
     files = [
-      ["//bucket.amazonaws.com/original/0184537a4f419224404d013414e913a4f56018f2.jpg", "defcaac0b4aca535c284e95f30d608d0"],
-      ["//bucket.amazonaws.com/original/0789fbf5490babc68326b9cec90eeb0d6590db05.png", "25c02eaceef4cb779fc17030d33f7f06"]
+      ["#{Discourse.store.absolute_base_url}/original/0184537a4f419224404d013414e913a4f56018f2.jpg", "defcaac0b4aca535c284e95f30d608d0"],
+      ["#{Discourse.store.absolute_base_url}/original/0789fbf5490babc68326b9cec90eeb0d6590db05.png", "25c02eaceef4cb779fc17030d33f7f06"]
     ]
     files.each { |file| Fabricate(:upload, url: file[0]) }
 

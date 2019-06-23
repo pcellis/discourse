@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'cache'
 require 'open3'
 require_dependency 'route_format'
@@ -21,8 +23,8 @@ module Discourse
   end
 
   class Utils
-    def self.execute_command(*command, failure_message: "", success_status_codes: [0])
-      stdout, stderr, status = Open3.capture3(*command)
+    def self.execute_command(*command, failure_message: "", success_status_codes: [0], chdir: ".")
+      stdout, stderr, status = Open3.capture3(*command, chdir: chdir)
 
       if !status.exited? || !success_status_codes.include?(status.exitstatus)
         failure_message = "#{failure_message}\n" if !failure_message.blank?
@@ -243,7 +245,13 @@ module Discourse
   end
 
   def self.cache
-    @cache ||= Cache.new
+    @cache ||= begin
+      if GlobalSetting.skip_redis?
+        ActiveSupport::Cache::MemoryStore.new
+      else
+        Cache.new
+      end
+    end
   end
 
   # Get the current base URL for the current site
@@ -261,8 +269,13 @@ module Discourse
 
   def self.base_url_no_prefix
     default_port = SiteSetting.force_https? ? 443 : 80
-    url = "#{base_protocol}://#{current_hostname}"
+    url = +"#{base_protocol}://#{current_hostname}"
     url << ":#{SiteSetting.port}" if SiteSetting.port.to_i > 0 && SiteSetting.port.to_i != default_port
+
+    if Rails.env.development? && SiteSetting.port.blank?
+      url << ":#{ENV["UNICORN_PORT"] || 3000}"
+    end
+
     url
   end
 
@@ -280,7 +293,7 @@ module Discourse
 
     return unless uri
 
-    path = uri.path || ""
+    path = +(uri.path || "")
     if !uri.host || (uri.host == Discourse.current_hostname && path.start_with?(Discourse.base_uri))
       path.slice!(Discourse.base_uri)
       return Rails.application.routes.recognize_path(path)
@@ -297,9 +310,9 @@ module Discourse
   end
 
   READONLY_MODE_KEY_TTL  ||= 60
-  READONLY_MODE_KEY      ||= 'readonly_mode'.freeze
-  PG_READONLY_MODE_KEY   ||= 'readonly_mode:postgres'.freeze
-  USER_READONLY_MODE_KEY ||= 'readonly_mode:user'.freeze
+  READONLY_MODE_KEY      ||= 'readonly_mode'
+  PG_READONLY_MODE_KEY   ||= 'readonly_mode:postgres'
+  USER_READONLY_MODE_KEY ||= 'readonly_mode:user'
 
   READONLY_KEYS ||= [
     READONLY_MODE_KEY,
@@ -430,6 +443,16 @@ module Discourse
       end
   end
 
+  def self.last_commit_date
+    ensure_version_file_loaded
+    $last_commit_date ||=
+      begin
+        git_cmd = 'git log -1 --format="%ct"'
+        seconds = self.try_git(git_cmd, nil)
+        seconds.nil? ? nil : DateTime.strptime(seconds, '%s')
+      end
+  end
+
   def self.try_git(git_cmd, default_value)
     version_value = false
 
@@ -469,7 +492,7 @@ module Discourse
   end
 
   def self.stats
-    @stats ||= PluginStore.new("stats")
+    PluginStore.new("stats")
   end
 
   def self.current_user_provider

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class UserOptionSerializer < ApplicationSerializer
   attributes :user_id,
              :mailing_list_mode,
@@ -8,6 +10,7 @@ class UserOptionSerializer < ApplicationSerializer
              :external_links_in_new_tab,
              :dynamic_favicon,
              :enable_quoting,
+             :enable_defer,
              :digest_after_minutes,
              :automatically_unpin_topics,
              :auto_track_topics_after_msecs,

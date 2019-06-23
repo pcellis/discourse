@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 source 'https://rubygems.org'
 # if there is a super emergency and rubygems is playing up, try
 #source 'http://production.cf.rubygems.org'
@@ -14,13 +16,13 @@ if rails_master?
 else
   # until rubygems gives us optional dependencies we are stuck with this
   # bundle update actionmailer actionpack actionview activemodel activerecord activesupport railties
-  gem 'actionmailer', '5.2.2.1'
-  gem 'actionpack', '5.2.2.1'
-  gem 'actionview', '5.2.2.1'
-  gem 'activemodel', '5.2.2.1'
-  gem 'activerecord', '5.2.2.1'
-  gem 'activesupport', '5.2.2.1'
-  gem 'railties', '5.2.2.1'
+  gem 'actionmailer', '5.2.3'
+  gem 'actionpack', '5.2.3'
+  gem 'actionview', '5.2.3'
+  gem 'activemodel', '5.2.3'
+  gem 'activerecord', '5.2.3'
+  gem 'activesupport', '5.2.3'
+  gem 'railties', '5.2.3'
   gem 'sprockets-rails'
 end
 
@@ -44,12 +46,12 @@ gem 'redis-namespace'
 
 gem 'active_model_serializers', '~> 0.8.3'
 
-gem 'onebox', '1.8.85'
+gem 'onebox', '1.8.92'
 
 gem 'http_accept_language', '~>2.0.5', require: false
 
 gem 'ember-rails', '0.18.5'
-gem 'discourse-ember-source', '~> 3.7.0'
+gem 'discourse-ember-source', '~> 3.8.0'
 gem 'ember-handlebars-template', '0.8.0'
 gem 'barber'
 
@@ -88,6 +90,7 @@ gem 'omniauth-github'
 gem 'omniauth-oauth2', require: false
 
 gem 'omniauth-google-oauth2'
+
 gem 'oj'
 gem 'pg'
 gem 'mini_sql'
@@ -96,6 +99,7 @@ gem 'r2', '~> 0.2.5', require: false
 gem 'rake'
 
 gem 'thor', require: false
+gem 'diffy', require: false
 gem 'rinku'
 gem 'sanitize'
 gem 'sidekiq'
@@ -120,7 +124,6 @@ group :test do
   gem 'webmock', require: false
   gem 'fakeweb', '~> 1.3.0', require: false
   gem 'minitest', require: false
-  gem 'danger'
   gem 'simplecov', require: false
   gem "test-prof"
 end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'csv'
 require_dependency 'system_message'
 require_dependency 'upload_creator'
@@ -54,16 +56,15 @@ module Jobs
       # write to CSV file
       CSV.open(absolute_path, "w") do |csv|
         csv << get_header
-        send(export_method).each { |d| csv << d }
+        public_send(export_method).each { |d| csv << d }
       end
 
       # compress CSV file
       system('gzip', '-5', absolute_path)
 
       # create upload
-      download_link = nil
+      upload = nil
       compressed_file_path = "#{absolute_path}.gz"
-      file_size = number_to_human_size(File.size(compressed_file_path))
 
       if File.exist?(compressed_file_path)
         File.open(compressed_file_path) do |file|
@@ -76,16 +77,21 @@ module Jobs
 
           if upload.persisted?
             user_export.update_columns(upload_id: upload.id)
-            download_link = upload.url
           else
             Rails.logger.warn("Failed to upload the file #{Discourse.base_uri}/export_csv/#{file_name}.gz")
           end
         end
+
         File.delete(compressed_file_path)
       end
-
     ensure
-      notify_user(download_link, file_name, file_size, export_title)
+      post = notify_user(upload, export_title)
+
+      if user_export.present? && post.present?
+        topic = post.topic
+        user_export.update_columns(topic_id: topic.id)
+        topic.update_status('closed', true, Discourse.system_user)
+      end
     end
 
     def user_archive_export
@@ -104,7 +110,6 @@ module Jobs
     def user_list_export
       return enum_for(:user_list_export) unless block_given?
 
-      user_array = []
       user_field_ids = UserField.pluck(:id)
 
       condition = {}
@@ -382,21 +387,23 @@ module Jobs
       screened_url_array
     end
 
-    def notify_user(download_link, file_name, file_size, export_title)
+    def notify_user(upload, export_title)
+      post = nil
+
       if @current_user
-        if download_link.present?
+        post = if upload
           SystemMessage.create_from_system_user(
             @current_user,
             :csv_export_succeeded,
-            download_link: download_link,
-            file_name: "#{file_name}.gz",
-            file_size: file_size,
+            download_link: "[#{upload.original_filename}|attachment](#{upload.short_url}) (#{number_to_human_size(upload.filesize)})",
             export_title: export_title
           )
         else
           SystemMessage.create_from_system_user(@current_user, :csv_export_failed)
         end
       end
+
+      post
     end
   end
 end

@@ -59,6 +59,11 @@ export function avatarFor(wanted, attrs) {
   );
 }
 
+// TODO: Improve how helpers are registered for vdom compliation
+if (typeof Discourse !== "undefined") {
+  Discourse.__widget_helpers.avatar = avatarFor;
+}
+
 createWidget("select-post", {
   tagName: "div.select-posts",
 
@@ -453,7 +458,7 @@ createWidget("post-notice", {
         : attrs.name;
     let text, icon;
     if (attrs.noticeType === "custom") {
-      icon = "asterisk";
+      icon = "user-shield";
       text = attrs.noticeMessage;
     } else if (attrs.noticeType === "new_user") {
       icon = "hands-helping";
@@ -706,21 +711,5 @@ export default createWidget("post", {
       bootbox.alert(I18n.t("post.few_likes_left"));
       kvs.set({ key: "lastWarnedLikes", value: new Date().getTime() });
     }
-  },
-
-  undoPostAction(typeId) {
-    const post = this.model;
-    return post
-      .get("actions_summary")
-      .findBy("id", typeId)
-      .undo(post);
-  },
-
-  deferPostActionFlags(typeId) {
-    const post = this.model;
-    return post
-      .get("actions_summary")
-      .findBy("id", typeId)
-      .deferFlags(post);
   }
 });

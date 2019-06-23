@@ -1,11 +1,13 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 require 'excon'
 
 describe Jobs::EmitWebHookEvent do
-  let(:post_hook) { Fabricate(:web_hook) }
-  let(:inactive_hook) { Fabricate(:inactive_web_hook) }
-  let(:post) { Fabricate(:post) }
-  let(:user) { Fabricate(:user) }
+  fab!(:post_hook) { Fabricate(:web_hook) }
+  fab!(:inactive_hook) { Fabricate(:inactive_web_hook) }
+  fab!(:post) { Fabricate(:post) }
+  fab!(:user) { Fabricate(:user) }
 
   it 'raises an error when there is no web hook record' do
     expect do
@@ -155,10 +157,10 @@ describe Jobs::EmitWebHookEvent do
   end
 
   context 'with category filters' do
-    let(:category) { Fabricate(:category) }
-    let(:topic) { Fabricate(:topic) }
-    let(:topic_with_category) { Fabricate(:topic, category_id: category.id) }
-    let(:topic_hook) { Fabricate(:topic_web_hook, categories: [category]) }
+    fab!(:category) { Fabricate(:category) }
+    fab!(:topic) { Fabricate(:topic) }
+    fab!(:topic_with_category) { Fabricate(:topic, category_id: category.id) }
+    fab!(:topic_hook) { Fabricate(:topic_web_hook, categories: [category]) }
 
     it "doesn't emit when event is not related with defined categories" do
       subject.execute(
@@ -184,9 +186,9 @@ describe Jobs::EmitWebHookEvent do
   end
 
   context 'with tag filters' do
-    let(:tag) { Fabricate(:tag) }
-    let(:topic) { Fabricate(:topic, tags: [tag]) }
-    let(:topic_hook) { Fabricate(:topic_web_hook, tags: [tag]) }
+    fab!(:tag) { Fabricate(:tag) }
+    fab!(:topic) { Fabricate(:topic, tags: [tag]) }
+    fab!(:topic_hook) { Fabricate(:topic_web_hook, tags: [tag]) }
 
     it "doesn't emit when event is not included any tags" do
       subject.execute(
@@ -260,6 +262,27 @@ describe Jobs::EmitWebHookEvent do
       expect(event.status).to eq(200)
       expect(MultiJson.load(event.response_headers)['Test']).to eq('string')
       expect(event.response_body).to eq('OK')
+    end
+
+    it 'sets up proper request headers when an error raised' do
+      Excon::Connection.any_instance.expects(:post).raises("error")
+
+      subject.execute(
+        web_hook_id: post_hook.id,
+        event_type: described_class::PING_EVENT,
+        event_name: described_class::PING_EVENT,
+        payload: { test: "this payload shouldn't appear" }.to_json
+      )
+
+      event = WebHookEvent.last
+      headers = MultiJson.load(event.headers)
+      expect(headers['Content-Length']).to eq(13)
+      expect(headers['Host']).to eq("meta.discourse.org")
+      expect(headers['X-Discourse-Event-Id']).to eq(event.id)
+      expect(headers['X-Discourse-Event-Type']).to eq(described_class::PING_EVENT)
+      expect(headers['X-Discourse-Event']).to eq(described_class::PING_EVENT)
+      expect(headers['X-Discourse-Event-Signature']).to eq('sha256=162f107f6b5022353274eb1a7197885cfd35744d8d08e5bcea025d309386b7d6')
+      expect(event.payload).to eq(MultiJson.dump(ping: 'OK'))
     end
   end
 end

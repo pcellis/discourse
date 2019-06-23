@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_dependency 'rate_limiter'
 
 class Invite < ActiveRecord::Base
@@ -54,7 +56,9 @@ class Invite < ActiveRecord::Base
   end
 
   def redeem(username: nil, name: nil, password: nil, user_custom_fields: nil, ip_address: nil)
-    InviteRedeemer.new(self, username, name, password, user_custom_fields, ip_address).redeem unless expired? || destroyed? || !link_valid?
+    if !expired? && !destroyed? && link_valid?
+      InviteRedeemer.new(self, username, name, password, user_custom_fields, ip_address).redeem
+    end
   end
 
   def self.invite_by_email(email, invited_by, topic = nil, group_ids = nil, custom_message = nil)
@@ -237,14 +241,6 @@ class Invite < ActiveRecord::Base
 
   def self.base_directory
     File.join(Rails.root, "public", "uploads", "csv", RailsMultisite::ConnectionManagement.current_db)
-  end
-
-  def self.create_csv(file, name)
-    extension = File.extname(file.original_filename)
-    path = "#{Invite.base_directory}/#{name}#{extension}"
-    FileUtils.mkdir_p(Pathname.new(path).dirname)
-    File.open(path, "wb") { |f| f << file.tempfile.read }
-    path
   end
 end
 

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 RSpec.describe ReviewableFlaggedPost, type: :model do
@@ -6,9 +8,9 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
     ReviewableFlaggedPost.default_visible.pending.count
   end
 
-  let(:user) { Fabricate(:user) }
-  let(:post) { Fabricate(:post) }
-  let(:moderator) { Fabricate(:moderator) }
+  fab!(:user) { Fabricate(:user) }
+  fab!(:post) { Fabricate(:post) }
+  fab!(:moderator) { Fabricate(:moderator) }
 
   it "sets `potential_spam` when a spam flag is added" do
     reviewable = PostActionCreator.off_topic(user, post).reviewable
@@ -24,6 +26,7 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
     let(:guardian) { Guardian.new(moderator) }
 
     describe "actions_for" do
+
       it "returns appropriate defaults" do
         actions = reviewable.actions_for(guardian)
         expect(actions.has?(:agree_and_hide)).to eq(true)
@@ -39,6 +42,16 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
         expect(actions.has?(:delete_and_replies)).to eq(false)
 
         expect(actions.has?(:disagree_and_restore)).to eq(false)
+      end
+
+      it "doesn't include deletes for category topics" do
+        c = Fabricate(:category)
+        flag = PostActionCreator.spam(user, c.topic.posts.first).reviewable
+        actions = flag.actions_for(guardian)
+        expect(actions.has?(:delete_and_ignore)).to eq(false)
+        expect(actions.has?(:delete_and_ignore_replies)).to eq(false)
+        expect(actions.has?(:delete_and_agree)).to eq(false)
+        expect(actions.has?(:delete_and_replies)).to eq(false)
       end
 
       it "returns `agree_and_restore` if the post is user deleted" do
@@ -129,6 +142,12 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
         reply_to_post_number: post.post_number,
         topic_id: post.topic_id
       )
+      nested_reply = PostCreator.create(
+        Fabricate(:user),
+        raw: 'this is the reply text2',
+        reply_to_post_number: reply.post_number,
+        topic_id: post.topic_id
+      )
       post.reload
 
       reviewable.perform(moderator, :delete_and_ignore_replies)
@@ -136,6 +155,7 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
       expect(score.reload).to be_ignored
       expect(post.reload.deleted_at).to be_present
       expect(reply.reload.deleted_at).to be_present
+      expect(nested_reply.reload.deleted_at).to be_present
     end
 
     it "delete_and_agree agrees with the flags and deletes post" do
@@ -152,6 +172,12 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
         reply_to_post_number: post.post_number,
         topic_id: post.topic_id
       )
+      nested_reply = PostCreator.create(
+        Fabricate(:user),
+        raw: 'this is the reply text2',
+        reply_to_post_number: reply.post_number,
+        topic_id: post.topic_id
+      )
       post.reload
 
       reviewable.perform(moderator, :delete_and_agree_replies)
@@ -159,6 +185,7 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
       expect(score.reload).to be_agreed
       expect(post.reload.deleted_at).to be_present
       expect(reply.reload.deleted_at).to be_present
+      expect(nested_reply.reload.deleted_at).to be_present
     end
 
     it "disagrees with the flags" do
@@ -189,8 +216,9 @@ RSpec.describe ReviewableFlaggedPost, type: :model do
       expect(pending_count).to eq(0)
     end
 
-    it "respects min_score_default_visibility" do
-      SiteSetting.min_score_default_visibility = 7.5
+    it "respects `reviewable_default_visibility`" do
+      Reviewable.set_priorities(high: 7.5)
+      SiteSetting.reviewable_default_visibility = 'high'
       expect(pending_count).to eq(0)
 
       PostActionCreator.off_topic(user, post)

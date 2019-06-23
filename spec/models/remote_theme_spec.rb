@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 describe RemoteTheme do
@@ -9,7 +11,7 @@ describe RemoteTheme do
       `cd #{repo_dir} && git init . `
       `cd #{repo_dir} && git config user.email 'someone@cool.com'`
       `cd #{repo_dir} && git config user.name 'The Cool One'`
-      `cd #{repo_dir} && mkdir desktop mobile common assets locales scss`
+      `cd #{repo_dir} && mkdir desktop mobile common assets locales scss stylesheets`
       files.each do |name, data|
         File.write("#{repo_dir}/#{name}", data)
         `cd #{repo_dir} && git add #{name}`
@@ -27,7 +29,7 @@ describe RemoteTheme do
           "theme_version": "1.0",
           "minimum_discourse_version": "1.0.0",
           "assets": {
-            "font": "assets/awesome.woff2"
+            "font": "assets/font.woff2"
           },
           "color_schemes": {
             "#{color_scheme_name}": {
@@ -46,12 +48,13 @@ describe RemoteTheme do
       setup_git_repo(
         "about.json" => about_json,
         "desktop/desktop.scss" => scss_data,
-        "scss/file.scss" => ".class1{color:red}",
-        "scss/empty.scss" => "",
+        "scss/oldpath.scss" => ".class2{color:blue}",
+        "stylesheets/file.scss" => ".class1{color:red}",
+        "stylesheets/empty.scss" => "",
         "common/header.html" => "I AM HEADER",
         "common/random.html" => "I AM SILLY",
         "common/embedded.scss" => "EMBED",
-        "assets/awesome.woff2" => "FAKE FONT",
+        "assets/font.woff2" => "FAKE FONT",
         "settings.yaml" => "boolean_setting: true",
         "locales/en.yml" => "sometranslations"
       )
@@ -79,10 +82,9 @@ describe RemoteTheme do
       expect(remote.theme_version).to eq("1.0")
       expect(remote.minimum_discourse_version).to eq("1.0.0")
 
-      expect(@theme.theme_fields.length).to eq(7)
+      expect(@theme.theme_fields.length).to eq(8)
 
       mapped = Hash[*@theme.theme_fields.map { |f| ["#{f.target_id}-#{f.name}", f.value] }.flatten]
-
       expect(mapped["0-header"]).to eq("I AM HEADER")
       expect(mapped["1-scss"]).to eq(scss_data)
       expect(mapped["0-embedded_scss"]).to eq("EMBED")
@@ -93,7 +95,7 @@ describe RemoteTheme do
 
       expect(mapped["4-en"]).to eq("sometranslations")
 
-      expect(mapped.length).to eq(7)
+      expect(mapped.length).to eq(8)
 
       expect(@theme.settings.length).to eq(1)
       expect(@theme.settings.first.value).to eq(true)
@@ -114,8 +116,7 @@ describe RemoteTheme do
       `cd #{initial_repo} && git add settings.yml`
 
       File.delete("#{initial_repo}/settings.yaml")
-      File.delete("#{initial_repo}/scss/file.scss")
-
+      File.delete("#{initial_repo}/stylesheets/file.scss")
       `cd #{initial_repo} && git commit -am "update"`
 
       time = Time.new('2001')
@@ -158,6 +159,13 @@ describe RemoteTheme do
 
       scheme_count = ColorScheme.where(theme_id: @theme.id).count
       expect(scheme_count).to eq(1)
+
+      # It should detect local changes
+      @theme.set_field(target: :common, name: :scss, value: 'body {background-color: blue};')
+      @theme.save
+      @theme.reload
+
+      expect(remote.diff_local_changes[:diff]).to include("background-color: blue")
     end
   end
 

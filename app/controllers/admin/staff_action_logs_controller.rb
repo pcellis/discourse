@@ -1,7 +1,9 @@
+# frozen_string_literal: true
+
 class Admin::StaffActionLogsController < Admin::AdminController
 
   def index
-    filters = params.slice(*UserHistory.staff_filters)
+    filters = params.slice(*UserHistory.staff_filters + [:page, :limit])
 
     staff_action_logs = UserHistory.staff_action_records(current_user, filters).to_a
     render json: StaffActionLogsSerializer.new({
@@ -22,7 +24,7 @@ class Admin::StaffActionLogsController < Admin::AdminController
 
     diff_fields = {}
 
-    output = "<h2>#{CGI.escapeHTML(cur["name"].to_s)}</h2><p></p>"
+    output = +"<h2>#{CGI.escapeHTML(cur["name"].to_s)}</h2><p></p>"
 
     diff_fields["name"] = {
       prev: prev["name"].to_s,

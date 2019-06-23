@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_dependency 'user_destroyer'
 require_dependency 'admin_user_index_query'
 require_dependency 'admin_confirmation'
@@ -254,7 +256,7 @@ class Admin::UsersController < Admin::AdminController
     level = params[:level].to_i
 
     if @user.manual_locked_trust_level.nil?
-      if [0, 1, 2].include?(level) && Promotion.send("tl#{level + 1}_met?", @user)
+      if [0, 1, 2].include?(level) && Promotion.public_send("tl#{level + 1}_met?", @user)
         @user.manual_locked_trust_level = level
         @user.save
       elsif level == 3 && Promotion.tl3_lost?(@user)
@@ -503,6 +505,7 @@ class Admin::UsersController < Admin::AdminController
     end
 
     user.active = true
+    user.approved = true
     user.save!
     user.grant_admin!
     user.change_trust_level!(4)
@@ -547,7 +550,9 @@ class Admin::UsersController < Admin::AdminController
     if post = Post.where(id: params[:post_id]).first
       case params[:post_action]
       when 'delete'
-        PostDestroyer.new(current_user, post).destroy
+        PostDestroyer.new(current_user, post).destroy if guardian.can_delete_post_or_topic?(post)
+      when "delete_replies"
+        PostDestroyer.delete_with_replies(current_user, post) if guardian.can_delete_post_or_topic?(post)
       when 'edit'
         revisor = PostRevisor.new(post)
 

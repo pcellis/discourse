@@ -2,7 +2,7 @@ import { iconHTML } from "discourse-common/lib/icon-library";
 import CanCheckEmails from "discourse/mixins/can-check-emails";
 import { default as computed } from "ember-addons/ember-computed-decorators";
 import PreferencesTabController from "discourse/mixins/preferences-tab-controller";
-import { setting } from "discourse/lib/computed";
+import { propertyNotEqual, setting } from "discourse/lib/computed";
 import { popupAjaxError } from "discourse/lib/ajax-error";
 import showModal from "discourse/lib/show-modal";
 import { findAll } from "discourse/models/login-method";
@@ -16,7 +16,11 @@ export default Ember.Controller.extend(
   CanCheckEmails,
   PreferencesTabController,
   {
-    saveAttrNames: ["name", "title"],
+    init() {
+      this._super(...arguments);
+
+      this.saveAttrNames = ["name", "title"];
+    },
 
     canEditName: setting("enable_names"),
     canSaveUser: true,
@@ -36,9 +40,7 @@ export default Ember.Controller.extend(
     ),
 
     reset() {
-      this.setProperties({
-        passwordProgress: null
-      });
+      this.set("passwordProgress", null);
     },
 
     @computed()
@@ -50,10 +52,7 @@ export default Ember.Controller.extend(
       );
     },
 
-    @computed("model.availableTitles")
-    canSelectTitle(availableTitles) {
-      return availableTitles.length > 0;
-    },
+    canSelectTitle: Ember.computed.gt("model.availableTitles.length", 0),
 
     @computed("model.is_anonymous")
     canChangePassword(isAnonymous) {
@@ -73,11 +72,7 @@ export default Ember.Controller.extend(
 
     @computed("model.associated_accounts.[]")
     authProviders(accounts) {
-      const allMethods = findAll(
-        this.siteSettings,
-        this.capabilities,
-        this.site.isMobileDevice
-      );
+      const allMethods = findAll();
 
       const result = allMethods.map(method => {
         return {
@@ -86,15 +81,10 @@ export default Ember.Controller.extend(
         };
       });
 
-      return result.filter(value => {
-        return value.account || value.method.get("can_connect");
-      });
+      return result.filter(value => value.account || value.method.can_connect);
     },
 
-    @computed("model.id")
-    disableConnectButtons(userId) {
-      return userId !== this.get("currentUser.id");
-    },
+    disableConnectButtons: propertyNotEqual("model.id", "currentUser.id"),
 
     @computed(
       "model.second_factor_enabled",
@@ -109,11 +99,7 @@ export default Ember.Controller.extend(
       if (secondFactorEnabled || !canCheckEmails || isAnonymous) {
         return false;
       }
-
-      return (
-        findAll(this.siteSettings, this.capabilities, this.site.isMobileDevice)
-          .length > 0
-      );
+      return findAll().length > 0;
     },
 
     @computed("showAllAuthTokens", "model.user_auth_tokens")
@@ -133,35 +119,33 @@ export default Ember.Controller.extend(
         : tokens.slice(0, DEFAULT_AUTH_TOKENS_COUNT);
     },
 
-    @computed("model.user_auth_tokens")
-    canShowAllAuthTokens(tokens) {
-      return tokens.length > DEFAULT_AUTH_TOKENS_COUNT;
-    },
+    canShowAllAuthTokens: Ember.computed.gt(
+      "model.user_auth_tokens.length",
+      DEFAULT_AUTH_TOKENS_COUNT
+    ),
 
     actions: {
       save() {
         this.set("saved", false);
 
-        const model = this.get("model");
+        this.model.setProperties({
+          name: this.newNameInput,
+          title: this.newTitleInput
+        });
 
-        model.set("name", this.get("newNameInput"));
-        model.set("title", this.get("newTitleInput"));
-
-        return model
-          .save(this.get("saveAttrNames"))
-          .then(() => {
-            this.set("saved", true);
-          })
+        return this.model
+          .save(this.saveAttrNames)
+          .then(() => this.set("saved", true))
           .catch(popupAjaxError);
       },
 
       changePassword() {
-        if (!this.get("passwordProgress")) {
+        if (!this.passwordProgress) {
           this.set(
             "passwordProgress",
             I18n.t("user.change_password.in_progress")
           );
-          return this.get("model")
+          return this.model
             .changePassword()
             .then(() => {
               // password changed
@@ -182,17 +166,14 @@ export default Ember.Controller.extend(
 
       delete() {
         this.set("deleting", true);
-        const self = this,
-          message = I18n.t("user.delete_account_confirm"),
-          model = this.get("model"),
+        const message = I18n.t("user.delete_account_confirm"),
+          model = this.model,
           buttons = [
             {
               label: I18n.t("cancel"),
               class: "d-modal-cancel",
               link: true,
-              callback: () => {
-                this.set("deleting", false);
-              }
+              callback: () => this.set("deleting", false)
             },
             {
               label:
@@ -201,14 +182,15 @@ export default Ember.Controller.extend(
               class: "btn btn-danger",
               callback() {
                 model.delete().then(
-                  function() {
-                    bootbox.alert(I18n.t("user.deleted_yourself"), function() {
-                      window.location.pathname = Discourse.getURL("/");
-                    });
+                  () => {
+                    bootbox.alert(
+                      I18n.t("user.deleted_yourself"),
+                      () => (window.location.pathname = Discourse.getURL("/"))
+                    );
                   },
-                  function() {
+                  () => {
                     bootbox.alert(I18n.t("user.delete_yourself_not_allowed"));
-                    self.set("deleting", false);
+                    this.set("deleting", false);
                   }
                 );
               }
@@ -218,25 +200,23 @@ export default Ember.Controller.extend(
       },
 
       revokeAccount(account) {
-        const model = this.get("model");
         this.set("revoking", true);
-        model
+
+        this.model
           .revokeAssociatedAccount(account.name)
           .then(result => {
             if (result.success) {
-              model.get("associated_accounts").removeObject(account);
+              this.model.associated_accounts.removeObject(account);
             } else {
               bootbox.alert(result.message);
             }
           })
           .catch(popupAjaxError)
-          .finally(() => {
-            this.set("revoking", false);
-          });
+          .finally(() => this.set("revoking", false));
       },
 
       toggleShowAllAuthTokens() {
-        this.set("showAllAuthTokens", !this.get("showAllAuthTokens"));
+        this.toggleProperty("showAllAuthTokens");
       },
 
       revokeAuthToken(token) {
@@ -256,7 +236,7 @@ export default Ember.Controller.extend(
       },
 
       connectAccount(method) {
-        method.doLogin(true);
+        method.doLogin({ reconnect: true, fullScreenLogin: false });
       }
     }
   }

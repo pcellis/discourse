@@ -24,7 +24,7 @@ export default Ember.Mixin.create({
   addTouchListeners($element) {
     if (this.site.mobileView) {
       $element
-        .on("touchstart", e => this._panStart(e.touches[0]))
+        .on("touchstart", e => e.touches && this._panStart(e.touches[0]))
         .on("touchmove", e => {
           const touchEvent = e.touches[0];
           touchEvent.type = "pointermove";
@@ -115,11 +115,11 @@ export default Ember.Mixin.create({
   },
 
   _panMove(e, originalEvent) {
-    if (!this.get("_panState")) {
+    if (!this._panState) {
       this._panStart(e);
       return;
     }
-    const previousState = this.get("_panState");
+    const previousState = this._panState;
     const newState = this._calculateNewPanState(previousState, e);
     if (previousState.start && newState.distance < MINIMUM_SWIPE_DISTANCE) {
       return;

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Emoji
   # update this to clear the cache
   EMOJI_VERSION = "9"
@@ -87,10 +89,12 @@ class Emoji
   def self.load_custom
     result = []
 
-    CustomEmoji.includes(:upload).order(:name).each do |emoji|
-      result << Emoji.new.tap do |e|
-        e.name = emoji.name
-        e.url = emoji.upload&.url
+    if !GlobalSetting.skip_db?
+      CustomEmoji.includes(:upload).order(:name).each do |emoji|
+        result << Emoji.new.tap do |e|
+          e.name = emoji.name
+          e.url = emoji.upload&.url
+        end
       end
     end
 

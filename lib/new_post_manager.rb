@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_dependency 'post_creator'
 require_dependency 'new_post_result'
 require_dependency 'word_watcher'
@@ -20,7 +22,7 @@ class NewPostManager
   end
 
   def self.clear_handlers!
-    @sorted_handlers = [{ priority: 0, proc: method(:default_handler) }]
+    @sorted_handlers = []
   end
 
   def self.add_handler(priority = 0, &block)
@@ -124,14 +126,14 @@ class NewPostManager
 
     if post.errors[:raw].present?
       result = NewPostResult.new(:created_post, false)
-      result.errors[:base] << post.errors[:raw]
+      result.errors.add(:base, post.errors[:raw])
       return result
     elsif manager.args[:topic_id]
       topic = Topic.unscoped.where(id: manager.args[:topic_id]).first
 
       unless manager.user.guardian.can_create_post_on_topic?(topic)
         result = NewPostResult.new(:created_post, false)
-        result.errors[:base] << I18n.t(:topic_not_found)
+        result.errors.add(:base, I18n.t(:topic_not_found))
         return result
       end
     elsif manager.args[:category]
@@ -139,7 +141,7 @@ class NewPostManager
 
       unless manager.user.guardian.can_create_topic_on_category?(category)
         result = NewPostResult.new(:created_post, false)
-        result.errors[:base] << I18n.t("js.errors.reasons.forbidden")
+        result.errors.add(:base, I18n.t("js.errors.reasons.forbidden"))
         return result
       end
     end
@@ -172,40 +174,43 @@ class NewPostManager
   def perform
     if !self.class.exempt_user?(@user) && matches = WordWatcher.new("#{@args[:title]} #{@args[:raw]}").should_block?
       result = NewPostResult.new(:created_post, false)
-      result.errors[:base] << I18n.t('contains_blocked_words', word: matches[0])
+      result.errors.add(:base, I18n.t('contains_blocked_words', word: matches[0]))
       return result
     end
 
-    # We never queue private messages
-    return perform_create_post if @args[:archetype] == Archetype.private_message
-
-    if args[:topic_id] && Topic.where(id: args[:topic_id], archetype: Archetype.private_message).exists?
-      return perform_create_post
-    end
-
     # Perform handlers until one returns a result
-    handled = NewPostManager.handlers.any? do |handler|
+    NewPostManager.handlers.any? do |handler|
       result = handler.call(self)
       return result if result
-
-      false
     end
 
-    perform_create_post unless handled
+    # We never queue private messages
+    return perform_create_post if @args[:archetype] == Archetype.private_message ||
+                                  (args[:topic_id] && Topic.where(id: args[:topic_id], archetype: Archetype.private_message).exists?)
+
+    NewPostManager.default_handler(self) || perform_create_post
   end
 
   # Enqueue this post
   def enqueue(reason = nil)
     result = NewPostResult.new(:enqueued)
+    payload = {
+      raw: @args[:raw],
+      tags: @args[:tags]
+    }
+    %w(typing_duration_msecs composer_open_duration_msecs reply_to_post_number).each do |a|
+      payload[a] = @args[a].to_i if @args[a]
+    end
 
     reviewable = ReviewableQueuedPost.new(
       created_by: @user,
-      payload: { raw: @args[:raw], tags: @args[:tags] },
+      payload: payload,
       topic_id: @args[:topic_id],
       reviewable_by_moderator: true
     )
     reviewable.payload['title'] = @args[:title] if @args[:title].present?
     reviewable.category_id = args[:category] if args[:category].present?
+    reviewable.created_new!
 
     create_options = reviewable.create_options
 
@@ -233,7 +238,7 @@ class NewPostManager
     result.reviewable = reviewable
     result.reason = reason if reason
     result.check_errors(errors)
-    result.pending_count = Reviewable.where(created_by: @user).pending.count
+    result.pending_count = ReviewableQueuedPost.where(created_by: @user).pending.count
     result
   end
 

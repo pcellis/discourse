@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 describe Admin::StaffActionLogsController do
@@ -5,7 +7,7 @@ describe Admin::StaffActionLogsController do
     expect(Admin::StaffActionLogsController < Admin::AdminController).to eq(true)
   end
 
-  let(:admin) { Fabricate(:admin) }
+  fab!(:admin) { Fabricate(:admin) }
 
   before do
     sign_in(admin)
@@ -27,6 +29,26 @@ describe Admin::StaffActionLogsController do
       expect(json["user_history_actions"]).to include(
         "id" => 'delete_topic', "action_id" => UserHistory.actions[:delete_topic]
       )
+    end
+
+    it 'generates logs with pages' do
+      1.upto(4).each do |idx|
+        StaffActionLogger.new(Discourse.system_user).log_site_setting_change("title", "value #{idx - 1}", "value #{idx}")
+      end
+
+      get "/admin/logs/staff_action_logs.json", params: { limit: 3 }
+
+      json = JSON.parse(response.body)
+      expect(response.status).to eq(200)
+      expect(json["staff_action_logs"].length).to eq(3)
+      expect(json["staff_action_logs"][0]["new_value"]).to eq("value 4")
+
+      get "/admin/logs/staff_action_logs.json", params: { limit: 3, page: 1 }
+
+      json = JSON.parse(response.body)
+      expect(response.status).to eq(200)
+      expect(json["staff_action_logs"].length).to eq(1)
+      expect(json["staff_action_logs"][0]["new_value"]).to eq("value 1")
     end
 
     context 'When staff actions are extended' do

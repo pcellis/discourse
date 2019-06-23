@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class UserOption < ActiveRecord::Base
   self.primary_key = :user_id
   belongs_to :user
@@ -51,6 +53,7 @@ class UserOption < ActiveRecord::Base
     self.email_in_reply_to = SiteSetting.default_email_in_reply_to
 
     self.enable_quoting = SiteSetting.default_other_enable_quoting
+    self.enable_defer = SiteSetting.default_other_enable_defer
     self.external_links_in_new_tab = SiteSetting.default_other_external_links_in_new_tab
     self.dynamic_favicon = SiteSetting.default_other_dynamic_favicon
 
@@ -195,8 +198,6 @@ end
 #  user_id                          :integer          not null, primary key
 #  mailing_list_mode                :boolean          default(FALSE), not null
 #  email_digests                    :boolean
-#  email_level                      :integer          default(1), not null
-#  email_messages_level             :integer          default(0), not null
 #  external_links_in_new_tab        :boolean          default(FALSE), not null
 #  enable_quoting                   :boolean          default(TRUE), not null
 #  dynamic_favicon                  :boolean          default(FALSE), not null
@@ -219,6 +220,10 @@ end
 #  hide_profile_and_presence        :boolean          default(FALSE), not null
 #  text_size_key                    :integer          default(0), not null
 #  text_size_seq                    :integer          default(0), not null
+#  email_level                      :integer          default(1), not null
+#  email_messages_level             :integer          default(0), not null
+#  title_count_mode_key             :integer          default(0), not null
+#  enable_defer                     :boolean          default(FALSE), not null
 #
 # Indexes
 #

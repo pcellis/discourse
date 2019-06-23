@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "sidekiq/web"
 require "mini_scheduler/web"
 require_dependency "admin_constraint"
@@ -6,7 +8,7 @@ require_dependency "homepage_constraint"
 require_dependency "permalink_constraint"
 
 # The following constants have been replaced with `RouteFormat` and are deprecated.
-USERNAME_ROUTE_FORMAT = /[\w.\-]+?/ unless defined? USERNAME_ROUTE_FORMAT
+USERNAME_ROUTE_FORMAT = /[%\w.\-]+?/ unless defined? USERNAME_ROUTE_FORMAT
 BACKUP_ROUTE_FORMAT = /.+\.(sql\.gz|tar\.gz|tgz)/i unless defined? BACKUP_ROUTE_FORMAT
 
 Discourse::Application.routes.draw do
@@ -206,6 +208,8 @@ Discourse::Application.routes.draw do
     post "themes/upload_asset" => "themes#upload_asset"
     post "themes/generate_key_pair" => "themes#generate_key_pair"
     get "themes/:id/preview" => "themes#preview"
+    get "themes/:id/diff_local_changes" => "themes#diff_local_changes"
+    put "themes/:id/setting" => "themes#update_single_setting"
 
     scope "/customize", constraints: AdminConstraint.new do
       resources :user_fields, constraints: AdminConstraint.new
@@ -327,14 +331,17 @@ Discourse::Application.routes.draw do
   put "review/:reviewable_id" => "reviewables#update", constraints: { reviewable_id: /\d+/ }
   delete "review/:reviewable_id" => "reviewables#destroy", constraints: { reviewable_id: /\d+/ }
 
+  resources :reviewable_claimed_topics
+
   get "session/sso" => "session#sso"
   get "session/sso_login" => "session#sso_login"
   get "session/sso_provider" => "session#sso_provider"
   get "session/current" => "session#current"
   get "session/csrf" => "session#csrf"
-  get "session/email-login/:token" => "session#email_login"
+  get "session/email-login/:token" => "session#email_login_info"
   post "session/email-login/:token" => "session#email_login"
   get "session/otp/:token" => "session#one_time_password", constraints: { token: /[0-9a-f]+/ }
+  post "session/otp/:token" => "session#one_time_password", constraints: { token: /[0-9a-f]+/ }
   get "composer_messages" => "composer_messages#index"
   post "composer/parse_html" => "composer#parse_html"
 
@@ -481,6 +488,7 @@ Discourse::Application.routes.draw do
 
   # used to download original images
   get "uploads/:site/:sha(.:extension)" => "uploads#show", constraints: { site: /\w+/, sha: /\h{40}/, extension: /[a-z0-9\.]+/i }
+  get "uploads/short-url/:base62(.:extension)" => "uploads#show_short", constraints: { site: /\w+/, base62: /[a-zA-Z0-9]+/, extension: /[a-z0-9\.]+/i }, as: :upload_short
   # used to download attachments
   get "uploads/:site/original/:tree:sha(.:extension)" => "uploads#show", constraints: { site: /\w+/, tree: /([a-z0-9]+\/)+/i, sha: /\h{40}/, extension: /[a-z0-9\.]+/i }
   # used to download attachments (old route)
@@ -581,7 +589,7 @@ Discourse::Application.routes.draw do
 
   resources :clicks do
     collection do
-      get "track"
+      post "track"
     end
   end
 

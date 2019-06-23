@@ -8,6 +8,7 @@
 tr_TR:
   site_settings:
     discourse_narrative_bot_enabled: 'Discourse Hikaye Botunu Etkinleştir (discobot)'
+    disable_discourse_narrative_bot_welcome_post: "Discourse anlatı botunu pasif hale getir"
     discourse_narrative_bot_ignored_usernames: "Discourse Hikaye Botunun kullandığı kullanıcı adları"
     discourse_narrative_bot_disable_public_replies: "Discourse Hikaye Botu tarafından verilen cevapları devre dışı bırak"
   badges:
@@ -82,7 +83,6 @@ tr_TR:
       skip_trigger: 'atla'
       help_trigger: 'yardımı görüntüle'
     new_user_narrative:
-      reset_trigger: "yeni kullanıcı"
       quoting:
         reply: |-
           Güzel iş, benim en favori alıntımı aldınız! :left_speech_bubble:
@@ -92,7 +92,6 @@ tr_TR:
       certificate:
         alt: 'Başarı Belgesi'
     advanced_user_narrative:
-      reset_trigger: 'gelişmiş kullanıcı'
       title: ':arrow_up: Gelişmiş kullanıcı özellikleri'
       edit:
         bot_created_post_raw: "@%{discobot_username} bugüne kadar, bildiğim en havalı bot :wink:"

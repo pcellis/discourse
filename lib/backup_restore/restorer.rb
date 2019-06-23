@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_dependency "db_helper"
 
 module BackupRestore
@@ -446,16 +448,38 @@ module BackupRestore
             DbHelper.remap("uploads/#{previous_db_name}", "uploads/#{current_db_name}")
           end
 
+          if SiteSetting.Upload.enable_s3_uploads
+            migrate_to_s3
+            remove_local_uploads(File.join(public_uploads_path, "uploads/#{current_db_name}"))
+          end
+
           generate_optimized_images unless optimized_images_exist
         end
       end
     end
 
+    def migrate_to_s3
+      log "Migrating uploads to S3..."
+      ENV["SKIP_FAILED"] = "1"
+      ENV["MIGRATE_TO_MULTISITE"] = "1" if Rails.configuration.multisite
+      Rake::Task["uploads:migrate_to_s3"].invoke
+    end
+
+    def remove_local_uploads(directory)
+      log "Removing local uploads directory..."
+      FileUtils.rm_rf(directory) if Dir[directory].present?
+    rescue => ex
+      log "Something went wrong while removing the following uploads directory: #{directory}", ex
+    end
+
     def generate_optimized_images
+      log 'Optimizing site icons...'
+      DB.exec("TRUNCATE TABLE optimized_images")
+      SiteIconManager.ensure_optimized!
+
       log 'Posts will be rebaked by a background job in sidekiq. You will see missing images until that has completed.'
       log 'You can expedite the process by manually running "rake posts:rebake_uncooked_posts"'
 
-      DB.exec("TRUNCATE TABLE optimized_images")
       DB.exec(<<~SQL)
         UPDATE posts
         SET baked_version = NULL
@@ -463,7 +487,7 @@ module BackupRestore
       SQL
 
       User.where("uploaded_avatar_id IS NOT NULL").find_each do |user|
-        Jobs.enqueue(:create_avatar_thumbnails, upload_id: user.uploaded_avatar_id, user_id: user.id)
+        Jobs.enqueue(:create_avatar_thumbnails, upload_id: user.uploaded_avatar_id)
       end
     end
 
@@ -518,6 +542,7 @@ module BackupRestore
       log "Clear theme cache"
       ThemeField.force_recompilation!
       Theme.expire_site_cache!
+      Stylesheet::Manager.cache.clear
     end
 
     def disable_readonly_mode

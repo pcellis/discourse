@@ -20,7 +20,6 @@ module SvgSprite
     "arrow-up",
     "arrows-alt-h",
     "arrows-alt-v",
-    "asterisk",
     "at",
     "backward",
     "ban",
@@ -69,6 +68,7 @@ module SvgSprite
     "external-link-alt",
     "fab-android",
     "fab-apple",
+    "fab-chrome",
     "fab-discourse",
     "fab-facebook-square",
     "fab-facebook",
@@ -185,6 +185,7 @@ module SvgSprite
     "user-edit",
     "user-plus",
     "user-secret",
+    "user-shield",
     "user-times",
     "users",
     "wrench"
@@ -202,11 +203,13 @@ module SvgSprite
     ThemeField.where(type_id: ThemeField.types[:theme_upload_var], name: THEME_SPRITE_VAR_NAME, theme_id: Theme.transform_ids(theme_ids))
       .pluck(:upload_id).each do |upload_id|
 
-      upload = Upload.find(upload_id)
-      original_path = Discourse.store.path_for(upload)
-      if original_path.blank?
+      upload = Upload.find(upload_id) rescue nil
+
+      if Discourse.store.external?
         external_copy = Discourse.store.download(upload) rescue nil
         original_path = external_copy.try(:path)
+      else
+        original_path = Discourse.store.path_for(upload)
       end
 
       custom_sprite_paths << original_path if original_path.present?

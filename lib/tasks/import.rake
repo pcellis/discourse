@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Use http://tatiyants.com/pev/#/plans/new if you want to optimize a query
 
 task "import:ensure_consistency" => :environment do
@@ -426,7 +428,7 @@ end
 
 def create_category_definitions
   log "Creating category definitions"
-  Category.where(topic_id: nil).each(&:create_category_definition)
+  Category.ensure_consistency!
 end
 
 def log(message)

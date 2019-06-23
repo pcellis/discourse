@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "edit_rate_limiter"
 require 'post_locker'
 
@@ -92,21 +94,9 @@ class PostRevisor
         tc.record_change('tags', prev_tags, tags)
         DB.after_commit do
           post = tc.topic.ordered_posts.first
-          notified_user_ids = [post.user_id, post.last_editor_id].uniq
-          Jobs.enqueue(:notify_tag_change, post_id: post.id, notified_user_ids: notified_user_ids)
+          Jobs.enqueue(:notify_tag_change, post_id: post.id)
         end
       end
-    end
-  end
-
-  track_topic_field(:tags_empty_array) do |tc, val|
-    if val.present? && tc.guardian.can_tag_topics?
-      prev_tags = tc.topic.tags.map(&:name)
-      if !DiscourseTagging.tag_topic_by_names(tc.topic, tc.guardian, [])
-        tc.check_result(false)
-        next
-      end
-      tc.record_change('tags', prev_tags, nil)
     end
   end
 
@@ -226,7 +216,9 @@ class PostRevisor
 
   def post_changed?
     POST_TRACKED_FIELDS.each do |field|
-      return true if @fields.has_key?(field) && @fields[field] != @post.send(field)
+      if @fields.has_key?(field) && @fields[field] != @post.public_send(field)
+        return true
+      end
     end
     advance_draft_sequence
     false
@@ -362,7 +354,7 @@ class PostRevisor
     end
 
     POST_TRACKED_FIELDS.each do |field|
-      @post.send("#{field}=", @fields[field]) if @fields.has_key?(field)
+      @post.public_send("#{field}=", @fields[field]) if @fields.has_key?(field)
     end
 
     @post.last_editor_id = @editor.id
@@ -415,6 +407,7 @@ class PostRevisor
   end
 
   def remove_flags_and_unhide_post
+    return if @opts[:deleting_post]
     return unless editing_a_flagged_and_hidden_post?
 
     flaggers = []
@@ -469,7 +462,8 @@ class PostRevisor
       user_id: @post.last_editor_id,
       post_id: @post.id,
       number: @post.version,
-      modifications: modifications
+      modifications: modifications,
+      hidden: only_hidden_tags_changed?
     )
   end
 
@@ -522,7 +516,23 @@ class PostRevisor
   end
 
   def bypass_bump?
-    !@post_successfully_saved || @topic_changes.errored? || @opts[:bypass_bump] == true || @post.whisper?
+    !@post_successfully_saved ||
+      @topic_changes.errored? ||
+      @opts[:bypass_bump] == true ||
+      @post.whisper? ||
+      only_hidden_tags_changed?
+  end
+
+  def only_hidden_tags_changed?
+    modifications = post_changes.merge(@topic_changes.diff)
+    if modifications.keys.size == 1 && tags_diff = modifications["tags"]
+      a, b = tags_diff[0] || [], tags_diff[1] || []
+      changed_tags = ((a + b) - (a & b)).map(&:presence).compact
+      if (changed_tags - DiscourseTagging.hidden_tag_names(nil)).empty?
+        return true
+      end
+    end
+    false
   end
 
   def is_last_post?
@@ -562,7 +572,7 @@ class PostRevisor
       category.update_column(:description, new_description)
       @category_changed = category
     else
-      @post.errors[:base] << I18n.t("category.errors.description_incomplete")
+      @post.errors.add(:base, I18n.t("category.errors.description_incomplete"))
     end
   end
 

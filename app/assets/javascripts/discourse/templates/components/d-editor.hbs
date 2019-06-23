@@ -24,6 +24,7 @@
           {{else}}
             {{d-button
               action=b.action
+              type="button"
               actionParam=b
               translatedTitle=b.title
               label=b.label
@@ -46,7 +47,7 @@
       class="d-editor-input"
       placeholder=placeholderTranslated
       disabled=disabled
-      change=change}}
+      input=change}}
     {{popup-input-tip validation=validation}}
     {{plugin-outlet name="after-d-editor" tagName="" args=outletArgs}}
   </div>

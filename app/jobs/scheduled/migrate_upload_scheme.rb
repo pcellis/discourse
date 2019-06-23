@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Jobs
 
   class MigrateUploadScheme < Jobs::Scheduled
@@ -16,7 +18,7 @@ module Jobs
       end
 
       # migrate uploads to new scheme
-      problems = Upload.migrate_to_new_scheme(50)
+      problems = Upload.migrate_to_new_scheme(limit: 50)
 
       problems.each do |hash|
         upload_id = hash[:upload].id

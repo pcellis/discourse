@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_dependency 'upload_creator'
 require_dependency 'theme_store/tgz_exporter'
 require 'base64'
@@ -7,8 +9,10 @@ class Admin::ThemesController < Admin::AdminController
   skip_before_action :check_xhr, only: [:show, :preview, :export]
 
   def preview
-    @theme = Theme.find(params[:id])
-    redirect_to path("/?preview_theme_id=#{@theme.id}")
+    theme = Theme.find_by(id: params[:id])
+    raise Discourse::InvalidParameters.new(:id) unless theme
+
+    redirect_to path("/?preview_theme_id=#{theme.id}")
   end
 
   def upload_asset
@@ -148,13 +152,14 @@ class Admin::ThemesController < Admin::AdminController
   end
 
   def update
-    @theme = Theme.find(params[:id])
+    @theme = Theme.find_by(id: params[:id])
+    raise Discourse::InvalidParameters.new(:id) unless @theme
 
     original_json = ThemeSerializer.new(@theme, root: false).to_json
 
     [:name, :color_scheme_id, :user_selectable].each do |field|
       if theme_params.key?(field)
-        @theme.send("#{field}=", theme_params[field])
+        @theme.public_send("#{field}=", theme_params[field])
       end
     end
 
@@ -215,7 +220,9 @@ class Admin::ThemesController < Admin::AdminController
   end
 
   def destroy
-    @theme = Theme.find(params[:id])
+    @theme = Theme.find_by(id: params[:id])
+    raise Discourse::InvalidParameters.new(:id) unless @theme
+
     StaffActionLogger.new(current_user).log_theme_destroy(@theme)
     @theme.destroy
 
@@ -225,12 +232,15 @@ class Admin::ThemesController < Admin::AdminController
   end
 
   def show
-    @theme = Theme.find(params[:id])
+    @theme = Theme.find_by(id: params[:id])
+    raise Discourse::InvalidParameters.new(:id) unless @theme
+
     render json: ThemeSerializer.new(@theme)
   end
 
   def export
-    @theme = Theme.find(params[:id])
+    @theme = Theme.find_by(id: params[:id])
+    raise Discourse::InvalidParameters.new(:id) unless @theme
 
     exporter = ThemeStore::TgzExporter.new(@theme)
     file_path = exporter.package_filename
@@ -240,6 +250,33 @@ class Admin::ThemesController < Admin::AdminController
       content_type: "application/x-gzip"
   ensure
     exporter.cleanup!
+  end
+
+  def diff_local_changes
+    theme = Theme.find_by(id: params[:id])
+    raise Discourse::InvalidParameters.new(:id) unless theme
+    changes = theme.remote_theme&.diff_local_changes
+    respond_to do |format|
+      format.json { render json: changes || {} }
+    end
+  end
+
+  def update_single_setting
+    params.require("name")
+    @theme = Theme.find_by(id: params[:id])
+    raise Discourse::InvalidParameters.new(:id) unless @theme
+
+    setting_name = params[:name].to_sym
+    new_value = params[:value] || nil
+
+    previous_value = @theme.included_settings[setting_name]
+    @theme.update_setting(setting_name, new_value)
+    @theme.save
+
+    log_theme_setting_change(setting_name, previous_value, new_value)
+
+    updated_setting = @theme.included_settings.select { |key, val| key == setting_name }
+    render json: updated_setting, status: :ok
   end
 
   private
@@ -307,6 +344,10 @@ class Admin::ThemesController < Admin::AdminController
 
   def log_theme_change(old_record, new_record)
     StaffActionLogger.new(current_user).log_theme_change(old_record, new_record)
+  end
+
+  def log_theme_setting_change(setting_name, previous_value, new_value)
+    StaffActionLogger.new(current_user).log_theme_setting_change(setting_name, previous_value, new_value, @theme)
   end
 
   def handle_switch

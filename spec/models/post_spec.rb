@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 describe Post do
@@ -153,9 +155,9 @@ describe Post do
   end
 
   describe 'flagging helpers' do
-    let(:post) { Fabricate(:post) }
-    let(:user) { Fabricate(:coding_horror) }
-    let(:admin) { Fabricate(:admin) }
+    fab!(:post) { Fabricate(:post) }
+    fab!(:user) { Fabricate(:coding_horror) }
+    fab!(:admin) { Fabricate(:admin) }
 
     it 'is_flagged? is accurate' do
       PostActionCreator.off_topic(user, post)
@@ -195,7 +197,7 @@ describe Post do
   end
 
   describe "maximum images" do
-    let(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
+    fab!(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
     let(:post_no_images) { Fabricate.build(:post, post_args.merge(user: newuser)) }
     let(:post_one_image) { post_with_body("![sherlock](http://bbc.co.uk/sherlock.jpg)", newuser) }
     let(:post_two_images) { post_with_body("<img src='http://discourse.org/logo.png'> <img src='http://bbc.co.uk/sherlock.jpg'>", newuser) }
@@ -309,7 +311,7 @@ describe Post do
   end
 
   describe "maximum attachments" do
-    let(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
+    fab!(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
     let(:post_no_attachments) { Fabricate.build(:post, post_args.merge(user: newuser)) }
     let(:post_one_attachment) { post_with_body('<a class="attachment" href="/uploads/default/1/2082985.txt">file.txt</a>', newuser) }
     let(:post_two_attachments) { post_with_body('<a class="attachment" href="/uploads/default/2/20947092.log">errors.log</a> <a class="attachment" href="/uploads/default/3/283572385.3ds">model.3ds</a>', newuser) }
@@ -357,7 +359,7 @@ describe Post do
   end
 
   context "links" do
-    let(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
+    fab!(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
     let(:no_links) { post_with_body("hello world my name is evil trout", newuser) }
     let(:one_link) { post_with_body("[jlawr](http://www.imdb.com/name/nm2225369)", newuser) }
     let(:two_links) { post_with_body("<a href='http://disneyland.disney.go.com/'>disney</a> <a href='http://reddit.com'>reddit</a>", newuser) }
@@ -403,7 +405,6 @@ describe Post do
 
       context "with a previous host" do
 
-        let(:user) { old_post.newuser }
         let(:another_disney_link) { post_with_body("[radiator springs](http://disneyland.disney.go.com/disney-california-adventure/radiator-springs-racers/)", newuser) }
 
         before do
@@ -422,7 +423,7 @@ describe Post do
   end
 
   describe "maximums" do
-    let(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
+    fab!(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
     let(:post_one_link) { post_with_body("[sherlock](http://www.bbc.co.uk/programmes/b018ttws)", newuser) }
     let(:post_onebox) { post_with_body("http://www.google.com", newuser) }
     let(:post_code_link) { post_with_body("<code>http://www.google.com</code>", newuser) }
@@ -547,7 +548,7 @@ describe Post do
 
     context "max mentions" do
 
-      let(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
+      fab!(:newuser) { Fabricate(:user, trust_level: TrustLevel[0]) }
       let(:post_with_one_mention) { post_with_body("@Jake is the person I'm mentioning", newuser) }
       let(:post_with_two_mentions) { post_with_body("@Jake @Finn are the people I'm mentioning", newuser) }
 
@@ -786,7 +787,7 @@ describe Post do
 
     describe 'a new reply' do
 
-      let(:topic) { Fabricate(:topic) }
+      fab!(:topic) { Fabricate(:topic) }
       let(:other_user) { Fabricate(:coding_horror) }
       let(:reply_text) { "[quote=\"Evil Trout, post:1\"]\nhello\n[/quote]\nHmmm!" }
       let!(:post) { PostCreator.new(topic.user, raw: Fabricate.build(:post).raw, topic_id: topic.id).create }
@@ -843,7 +844,7 @@ describe Post do
     let!(:p1) { Fabricate(:post, post_args.merge(score: 4, percent_rank: 0.33)) }
     let!(:p2) { Fabricate(:post, post_args.merge(score: 10, percent_rank: 0.66)) }
     let!(:p3) { Fabricate(:post, post_args.merge(score: 5, percent_rank: 0.99)) }
-    let!(:p4) { Fabricate(:post, percent_rank: 0.99) }
+    fab!(:p4) { Fabricate(:post, percent_rank: 0.99) }
 
     it "returns the OP and posts above the threshold in summary mode" do
       SiteSetting.summary_percent_filter = 66
@@ -883,7 +884,7 @@ describe Post do
 
   context "reply_ids" do
 
-    let!(:topic) { Fabricate(:topic) }
+    fab!(:topic) { Fabricate(:topic) }
     let!(:p1) { Fabricate(:post, topic: topic, post_number: 1) }
     let!(:p2) { Fabricate(:post, topic: topic, post_number: 2, reply_to_post_number: 1) }
     let!(:p3) { Fabricate(:post, topic: topic, post_number: 3) }
@@ -982,7 +983,7 @@ describe Post do
     end
 
     describe 'mentions' do
-      let(:group) do
+      fab!(:group) do
         Fabricate(:group,
           mentionable_level: Group::ALIAS_LEVELS[:members_mods_and_admins]
         )
@@ -1019,14 +1020,6 @@ describe Post do
           )
         end
       end
-    end
-  end
-
-  describe "calculate_avg_time" do
-
-    it "should not crash" do
-      Post.calculate_avg_time
-      Post.calculate_avg_time(1.day.ago)
     end
   end
 
@@ -1117,8 +1110,8 @@ describe Post do
   end
 
   describe "#set_owner" do
-    let(:post) { Fabricate(:post) }
-    let(:coding_horror) { Fabricate(:coding_horror) }
+    fab!(:post) { Fabricate(:post) }
+    fab!(:coding_horror) { Fabricate(:coding_horror) }
 
     it "will change owner of a post correctly" do
       post.set_owner(coding_horror, Discourse.system_user)
@@ -1236,43 +1229,32 @@ describe Post do
   end
 
   describe '#link_post_uploads' do
-    let(:video_upload) do
-      Fabricate(:upload,
-        url: '/uploads/default/original/1X/1/1234567890123456.mp4'
-      )
-    end
+    fab!(:video_upload) { Fabricate(:upload, extension: "mp4") }
+    fab!(:image_upload) { Fabricate(:upload) }
+    fab!(:audio_upload) { Fabricate(:upload, extension: "ogg") }
+    fab!(:attachment_upload) { Fabricate(:upload, extension: "csv") }
+    fab!(:attachment_upload_2) { Fabricate(:upload) }
+    fab!(:attachment_upload_3) { Fabricate(:upload, extension: nil) }
 
-    let(:image_upload) do
-      Fabricate(:upload,
-        url: '/uploads/default/original/1X/1/1234567890123456.jpg'
-      )
-    end
-
-    let(:audio_upload) do
-      Fabricate(:upload,
-        url: '/uploads/default/original/1X/1/1234567890123456.ogg'
-      )
-    end
-
-    let(:attachment_upload) do
-      Fabricate(:upload,
-        url: '/uploads/default/original/1X/1/1234567890123456.csv'
-      )
-    end
+    let(:base_url) { "#{Discourse.base_url_no_prefix}#{Discourse.base_uri}" }
+    let(:video_url) { "#{base_url}#{video_upload.url}" }
+    let(:audio_url) { "#{base_url}#{audio_upload.url}" }
 
     let(:raw) do
       <<~RAW
       <a href="#{attachment_upload.url}">Link</a>
+      [test|attachment](#{attachment_upload_2.short_url})
+      [test3|attachment](#{attachment_upload_3.short_url})
       <img src="#{image_upload.url}">
 
       <video width="100%" height="100%" controls>
-        <source src="http://myforum.com#{video_upload.url}">
-        <a href="http://myforum.com#{video_upload.url}">http://myforum.com#{video_upload.url}</a>
+        <source src="#{video_url}">
+        <a href="#{video_url}">#{video_url}</a>
       </video>
 
       <audio controls>
-        <source src="http://myforum.com#{audio_upload.url}">
-        <a href="http://myforum.com#{audio_upload.url}">http://myforum.com#{audio_upload.url}</a>
+        <source src="#{audio_url}">
+        <a href="#{audio_url}">#{audio_url}</a>
       </audio>
       RAW
     end
@@ -1288,7 +1270,12 @@ describe Post do
       post.link_post_uploads
 
       expect(PostUpload.where(post: post).pluck(:upload_id)).to contain_exactly(
-        video_upload.id, image_upload.id, audio_upload.id, attachment_upload.id
+        video_upload.id,
+        image_upload.id,
+        audio_upload.id,
+        attachment_upload.id,
+        attachment_upload_2.id,
+        attachment_upload_3.id
       )
     end
 
@@ -1351,7 +1338,35 @@ describe Post do
       ids << Fabricate(:post, cooked: "A post with upload link <a href='https://cdn.example.com/original/1X/abc/defghijklmno.png'>").id
       ids << Fabricate(:post, cooked: "A post with optimized image <img src='https://cdn.example.com/bucket/optimized/1X/abc/defghijklmno.png'>").id
       Fabricate(:post, cooked: "A post with external link <a href='https://example.com/wp-content/uploads/abcdef.gif'>")
+      ids << Fabricate(:post, cooked: 'A post with missing upload <img src="https://cdn.example.com/images/transparent.png" data-orig-src="upload://defghijklmno.png">').id
       expect(Post.have_uploads.order(:id).pluck(:id)).to eq(ids)
+    end
+  end
+
+  describe '#each_upload_url' do
+    let(:upload) { Fabricate(:upload_s3) }
+
+    it "correctly identifies all upload urls" do
+      urls = []
+      upload1 = Fabricate(:upload)
+      upload2 = Fabricate(:upload)
+      post = Fabricate(:post, raw: "A post with image and link upload.\n\n![](#{upload1.short_url})\n\n<a href='#{upload2.url}'>Link to upload</a>\n![](http://example.com/external.png)")
+      post.each_upload_url { |src, _, _| urls << src }
+      expect(urls).to eq([upload1.url, upload2.url])
+    end
+
+    it "should skip external urls with upload url in query string" do
+      SiteSetting.enable_s3_uploads = true
+      SiteSetting.s3_upload_bucket = "s3-upload-bucket"
+      SiteSetting.s3_access_key_id = "some key"
+      SiteSetting.s3_secret_access_key = "some secret key"
+      SiteSetting.s3_cdn_url = "https://cdn.s3.amazonaws.com"
+
+      urls = []
+      upload = Fabricate(:upload_s3)
+      post = Fabricate(:post, raw: "<a href='https://link.example.com/redirect?url=#{Discourse.store.cdn_url(upload.url)}'>Link to upload</a>")
+      post.each_upload_url { |src, _, _| urls << src }
+      expect(urls).to be_empty
     end
   end
 

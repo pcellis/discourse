@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_dependency 'discourse_hub'
 require_dependency 'user_name_suggester'
 require_dependency 'rate_limiter'
@@ -313,7 +315,7 @@ class UsersController < ApplicationController
       params.require(:username) if !params[:email].present?
       return render(json: success_json)
     end
-    username = params[:username]
+    username = params[:username]&.unicode_normalize
 
     target_user = user_from_params_or_current_user
 
@@ -331,6 +333,7 @@ class UsersController < ApplicationController
 
   def create
     params.require(:email)
+    params.require(:username)
     params.permit(:user_fields)
 
     unless SiteSetting.allow_new_registrations
@@ -348,6 +351,8 @@ class UsersController < ApplicationController
     if User.reserved_username?(params[:username])
       return fail_with("login.reserved_username")
     end
+
+    params[:locale] ||= I18n.locale unless current_user
 
     new_user_params = user_params
     user = User.unstage(new_user_params)
@@ -840,15 +845,17 @@ class UsersController < ApplicationController
     topic_id = topic_id.to_i if topic_id
     topic_allowed_users = params[:topic_allowed_users] || false
 
-    if params[:group].present?
-      @group = Group.find_by(name: params[:group])
+    group_names = params[:groups] || []
+    group_names << params[:group] if params[:group]
+    if group_names.present?
+      @groups = Group.where(name: group_names)
     end
 
     results = UserSearch.new(term,
                              topic_id: topic_id,
                              topic_allowed_users: topic_allowed_users,
                              searching_user: current_user,
-                             group: @group
+                             groups: @groups
                             ).search
 
     user_fields = [:username, :upload_avatar_template]
@@ -1035,7 +1042,7 @@ class UsersController < ApplicationController
     result = {}
 
     %W{number_of_deleted_posts number_of_flagged_posts number_of_flags_given number_of_suspensions warnings_received_count}.each do |info|
-      result[info] = @user.send(info)
+      result[info] = @user.public_send(info)
     end
 
     render json: result
@@ -1158,6 +1165,7 @@ class UsersController < ApplicationController
 
     # We're likely going to contact the remote auth provider, so hijack request
     hijack do
+      DiscourseEvent.trigger(:before_auth_revoke, authenticator, user)
       result = authenticator.revoke(user, skip_remote: skip_remote)
       if result
         render json: success_json
@@ -1241,8 +1249,8 @@ class UsersController < ApplicationController
       :location,
       :website,
       :dismissed_banner_key,
-      :profile_background,
-      :card_background
+      :profile_background_upload_url,
+      :card_background_upload_url
     ]
 
     permitted << { custom_fields: User.editable_user_custom_fields } unless User.editable_user_custom_fields.blank?
@@ -1254,8 +1262,7 @@ class UsersController < ApplicationController
       .permit(permitted, theme_ids: [])
       .reverse_merge(
         ip_address: request.remote_ip,
-        registration_ip_address: request.remote_ip,
-        locale: user_locale
+        registration_ip_address: request.remote_ip
       )
 
     if !UsernameCheckerService.is_developer?(result['email']) &&
@@ -1272,10 +1279,6 @@ class UsersController < ApplicationController
   # Plugins can use this to modify user parameters
   def modify_user_params(attrs)
     attrs
-  end
-
-  def user_locale
-    I18n.locale
   end
 
   def fail_with(key)

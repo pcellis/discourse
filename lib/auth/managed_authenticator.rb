@@ -1,8 +1,10 @@
+# frozen_string_literal: true
+
 class Auth::ManagedAuthenticator < Auth::Authenticator
   def description_for_user(user)
     info = UserAssociatedAccount.find_by(provider_name: name, user_id: user.id)&.info
     return "" if info.nil?
-    info["email"] || info["nickname"] || info["name"] || ""
+    info["email"] || info["nickname"] || info["name"] || I18n.t("associated_accounts.connected")
   end
 
   # These three methods are designed to be overriden by child classes

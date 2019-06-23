@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 require_dependency 'site_setting_extension'
 require_dependency 'site_settings/local_process_provider'
@@ -140,6 +142,25 @@ describe SiteSettingExtension do
       end.to change { settings.send(:uploads)[:upload_type] }.from(upload).to(nil)
 
       expect(settings.upload_type).to eq(upload2)
+    end
+
+    it "refreshes the client_settings_json cache" do
+      upload = Fabricate(:upload)
+      settings.setting(:upload_type, upload.id.to_s, type: :upload, client: true)
+      settings.setting(:string_type, 'haha', client: true)
+      settings.refresh!
+
+      expect(settings.client_settings_json).to eq(
+        %Q|{"default_locale":"#{SiteSetting.default_locale}","upload_type":"#{upload.url}","string_type":"haha"}|
+      )
+
+      upload.update!(url: "a_new_url")
+      settings.string_type = "changed"
+      settings.refresh!
+
+      expect(settings.client_settings_json).to eq(
+        %Q|{"default_locale":"#{SiteSetting.default_locale}","upload_type":"a_new_url","string_type":"changed"}|
+      )
     end
   end
 
@@ -530,6 +551,23 @@ describe SiteSettingExtension do
     end
   end
 
+  describe ".get" do
+    before do
+      settings.setting(:title, "Discourse v1")
+      settings.refresh!
+    end
+
+    it "works correctly" do
+      expect {
+        settings.get("frogs_in_africa")
+      }.to raise_error(Discourse::InvalidParameters)
+
+      expect(settings.get(:title)).to eq("Discourse v1")
+      expect(settings.get("title")).to eq("Discourse v1")
+    end
+
+  end
+
   describe ".set_and_log" do
     before do
       settings.setting(:s3_secret_access_key, "old_secret_key", secret: true)
@@ -747,7 +785,7 @@ describe SiteSettingExtension do
 
   describe '.default_locale' do
     it 'is always loaded' do
-      expect(settings.default_locale).to eq 'en'
+      expect(settings.default_locale).to eq('en_US')
     end
   end
 
@@ -776,8 +814,8 @@ describe SiteSettingExtension do
   describe "get_hostname" do
 
     it "properly extracts the hostname" do
+      # consider testing this through a public interface, this tests implementation details
       expect(settings.send(:get_hostname, "discourse.org")).to eq("discourse.org")
-      expect(settings.send(:get_hostname, " discourse.org ")).to eq("discourse.org")
       expect(settings.send(:get_hostname, "@discourse.org")).to eq("discourse.org")
       expect(settings.send(:get_hostname, "https://discourse.org")).to eq("discourse.org")
     end
@@ -814,15 +852,15 @@ describe SiteSettingExtension do
       settings.refresh!
 
       expect(settings.client_settings_json_uncached).to eq(
-        %Q|{"default_locale":"en","upload_type":"#{upload.url}","string_type":"haha"}|
+        %Q|{"default_locale":"#{SiteSetting.default_locale}","upload_type":"#{upload.url}","string_type":"haha"}|
       )
     end
   end
 
   describe '.setup_methods' do
     describe 'for uploads site settings' do
-      let(:upload) { Fabricate(:upload) }
-      let(:upload2) { Fabricate(:upload) }
+      fab!(:upload) { Fabricate(:upload) }
+      fab!(:upload2) { Fabricate(:upload) }
 
       it 'should return the upload record' do
         settings.setting(:some_upload, upload.id.to_s, type: :upload)

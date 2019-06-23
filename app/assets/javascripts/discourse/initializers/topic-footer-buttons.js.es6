@@ -1,5 +1,4 @@
 import showModal from "discourse/lib/show-modal";
-import { nativeShare } from "discourse/lib/pwa-utils";
 import { registerTopicFooterButton } from "discourse/lib/register-topic-footer-button";
 
 export default {
@@ -13,44 +12,40 @@ export default {
       label: "topic.share.title",
       title: "topic.share.help",
       action() {
-        const modal = () => {
-          const panels = [
-            {
-              id: "share",
-              title: "topic.share.extended_title",
-              model: {
-                topic: this.get("topic")
-              }
+        const panels = [
+          {
+            id: "share",
+            title: "topic.share.extended_title",
+            model: {
+              topic: this.topic
             }
-          ];
+          }
+        ];
 
-          if (this.get("canInviteTo") && !this.get("inviteDisabled")) {
-            let invitePanelTitle;
+        if (this.canInviteTo && !this.inviteDisabled) {
+          let invitePanelTitle;
 
-            if (this.get("isPM")) {
-              invitePanelTitle = "topic.invite_private.title";
-            } else if (this.get("invitingToTopic")) {
-              invitePanelTitle = "topic.invite_reply.title";
-            } else {
-              invitePanelTitle = "user.invited.create";
-            }
-
-            panels.push({
-              id: "invite",
-              title: invitePanelTitle,
-              model: {
-                inviteModel: this.get("topic")
-              }
-            });
+          if (this.isPM) {
+            invitePanelTitle = "topic.invite_private.title";
+          } else if (this.invitingToTopic) {
+            invitePanelTitle = "topic.invite_reply.title";
+          } else {
+            invitePanelTitle = "user.invited.create";
           }
 
-          showModal("share-and-invite", {
-            modalClass: "share-and-invite",
-            panels
+          panels.push({
+            id: "invite",
+            title: invitePanelTitle,
+            model: {
+              inviteModel: this.topic
+            }
           });
-        };
+        }
 
-        nativeShare({ url: this.get("topic.shareUrl") }).then(null, modal);
+        showModal("share-and-invite", {
+          modalClass: "share-and-invite",
+          panels
+        });
       },
       dropdown() {
         return this.site.mobileView;
@@ -118,13 +113,13 @@ export default {
       id: "archive",
       priority: 996,
       icon() {
-        return this.get("archiveIcon");
+        return this.archiveIcon;
       },
       label() {
-        return this.get("archiveLabel");
+        return this.archiveLabel;
       },
       title() {
-        return this.get("archiveTitle");
+        return this.archiveTitle;
       },
       action: "toggleArchiveMessage",
       classNames: ["standard", "archive-topic"],
@@ -135,8 +130,11 @@ export default {
         "archiveTitle",
         "toggleArchiveMessage"
       ],
+      dropdown() {
+        return this.site.mobileView;
+      },
       displayed() {
-        return this.get("canArchive");
+        return this.canArchive;
       }
     });
 
@@ -150,7 +148,22 @@ export default {
       classNames: ["edit-message"],
       dependentKeys: ["editFirstPost", "showEditOnFooter"],
       displayed() {
-        return this.get("showEditOnFooter");
+        return this.showEditOnFooter;
+      }
+    });
+
+    registerTopicFooterButton({
+      id: "defer",
+      icon: "circle",
+      priority: 300,
+      label: "topic.defer.title",
+      title: "topic.defer.help",
+      action: "deferTopic",
+      displayed() {
+        return this.canDefer;
+      },
+      dropdown() {
+        return this.site.mobileView;
       }
     });
   }

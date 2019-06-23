@@ -71,6 +71,7 @@ class Category < ActiveRecord::Base
   after_save :reset_topic_ids_cache
   after_save :clear_url_cache
   after_save :index_search
+  after_save :update_reviewables
 
   after_destroy :reset_topic_ids_cache
   after_destroy :publish_category_deletion
@@ -92,6 +93,7 @@ class Category < ActiveRecord::Base
   has_many :tags, through: :category_tags
   has_many :category_tag_groups, dependent: :destroy
   has_many :tag_groups, through: :category_tag_groups
+  belongs_to :reviewable_by_group, class_name: 'Group'
 
   scope :latest, -> { order('topic_count DESC') }
 
@@ -220,13 +222,18 @@ class Category < ActiveRecord::Base
   def create_category_definition
     return if skip_category_definition
 
-    t = Topic.new(title: I18n.t("category.topic_prefix", category: name), user: user, pinned_at: Time.now, category_id: id)
-    t.skip_callbacks = true
-    t.ignore_category_auto_close = true
-    t.delete_topic_timer(TopicTimer.types[:close])
-    t.save!(validate: false)
-    update_column(:topic_id, t.id)
-    t.posts.create(raw: description || post_template, user: user)
+    Topic.transaction do
+      t = Topic.new(title: I18n.t("category.topic_prefix", category: name), user: user, pinned_at: Time.now, category_id: id)
+      t.skip_callbacks = true
+      t.ignore_category_auto_close = true
+      t.delete_topic_timer(TopicTimer.types[:close])
+      t.save!(validate: false)
+      update_column(:topic_id, t.id)
+      post = t.posts.build(raw: description || post_template, user: user)
+      post.save!(validate: false)
+
+      t
+    end
   end
 
   def topic_url
@@ -283,7 +290,7 @@ class Category < ActiveRecord::Base
   def remove_site_settings
     SiteSetting.all_settings.each do |s|
       if s[:type] == 'category' && s[:value].to_i == self.id
-        SiteSetting.send("#{s[:setting]}=", '')
+        SiteSetting.set(s[:setting], '')
       end
     end
 
@@ -518,7 +525,7 @@ class Category < ActiveRecord::Base
       .pluck("topics.id")
       .first
 
-    self.update_attributes(latest_topic_id: latest_topic_id, latest_post_id: latest_post_id)
+    self.update(latest_topic_id: latest_topic_id, latest_post_id: latest_post_id)
   end
 
   def self.query_parent_category(parent_slug)
@@ -612,6 +619,12 @@ class Category < ActiveRecord::Base
     SearchIndexer.index(self)
   end
 
+  def update_reviewables
+    if SiteSetting.enable_category_group_review? && saved_change_to_reviewable_by_group_id?
+      Reviewable.where(category_id: id).update_all(reviewable_by_group_id: reviewable_by_group_id)
+    end
+  end
+
   def self.find_by_slug(category_slug, parent_category_slug = nil)
     if parent_category_slug
       parent_category_id = self.where(slug: parent_category_slug, parent_category_id: nil).pluck(:id).first
@@ -653,6 +666,40 @@ class Category < ActiveRecord::Base
       child_permissions = subcategories_permissions.uniq
 
       check_permissions_compatibility(parent_permissions, child_permissions)
+    end
+  end
+
+  def self.ensure_consistency!
+
+    sql = <<~SQL
+      SELECT t.id FROM topics t
+      JOIN categories c ON c.topic_id = t.id
+      LEFT JOIN posts p ON p.topic_id = t.id AND p.post_number = 1
+      WHERE p.id IS NULL
+    SQL
+
+    DB.query_single(sql).each do |id|
+      Topic.with_deleted.find_by(id: id).destroy!
+    end
+
+    sql = <<~SQL
+      UPDATE categories c
+      SET topic_id = NULL
+      WHERE c.id IN (
+        SELECT c2.id FROM categories c2
+        LEFT JOIN topics t ON t.id = c2.topic_id AND t.deleted_at IS NULL
+        WHERE t.id IS NULL AND c2.topic_id IS NOT NULL
+      )
+    SQL
+
+    DB.exec(sql)
+
+    Category
+      .joins('LEFT JOIN topics ON categories.topic_id = topics.id AND topics.deleted_at IS NULL')
+      .where('categories.id <> ?', SiteSetting.uncategorized_category_id)
+      .where(topics: { id: nil })
+      .find_each do |category|
+      category.create_category_definition
     end
   end
 
@@ -734,11 +781,13 @@ end
 #  navigate_to_first_post_after_read :boolean          default(FALSE), not null
 #  search_priority                   :integer          default(0)
 #  allow_global_tags                 :boolean          default(FALSE), not null
+#  reviewable_by_group_id            :integer
 #
 # Indexes
 #
-#  index_categories_on_email_in         (email_in) UNIQUE
-#  index_categories_on_search_priority  (search_priority)
-#  index_categories_on_topic_count      (topic_count)
-#  unique_index_categories_on_name      (COALESCE(parent_category_id, '-1'::integer), name) UNIQUE
+#  index_categories_on_email_in                (email_in) UNIQUE
+#  index_categories_on_reviewable_by_group_id  (reviewable_by_group_id)
+#  index_categories_on_search_priority         (search_priority)
+#  index_categories_on_topic_count             (topic_count)
+#  unique_index_categories_on_name             (COALESCE(parent_category_id, '-1'::integer), name) UNIQUE
 #
